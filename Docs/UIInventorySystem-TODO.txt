@@ -1,0 +1,160 @@
+﻿UIInventorySystem - Inventory development TODO
+Updated: 2026-10-22
+
+Status - C++ development paused at the user's request
+- Finish a substantial process or the inventory section of the course first, to understand the full system before deciding what to improve or replace.
+- Wait for the user to explicitly say they are ready to start/resume their own C++ inventory system. Do not advance the implementation while paused.
+- On resumption, audit the then-current course implementation: identify what works, what needs improvement, and which changes are justified. Revise the proposed phases below based on that evidence.
+- Learning workflow: the user writes the code and makes editor changes. The assistant explains tasks in batches of three, audits the user's work, and resolves issues before proceeding. Do not implement the system for the user.
+
+Completed progress - verified from source on 2026-10-22
+[x] User created UCurrencyComponent, derived from UActorComponent, in the UIInventorySystem module.
+[x] Established feature folders: Source/UIInventorySystem/Public/Inventory/Components/CurrencyComponent.h and Source/UIInventorySystem/Private/Inventory/Components/CurrencyComponent.cpp.
+[x] CPP includes Inventory/Components/CurrencyComponent.h; generated header remains the last include in the header.
+[x] Disabled ticking with PrimaryComponentTick.bCanEverTick = false and removed TickComponent declaration and definition.
+[x] Retained the constructor and BeginPlay(), including Super::BeginPlay().
+[x] Removed the unused public section and obsolete generated comments/placeholders after the first audit.
+- First source audit passed. A compiled DLL newer than the initial edits was observed, but the final build success summary was not independently verified.
+- This is only the component skeleton. Balance, GetBalance, add/spend operations, pickup integration, and UI integration have not been implemented in these component files.
+
+Last suggested batch - deferred, not a direction to continue now
+- Scaffolding cleanup is complete; extra whitespace is only cosmetic.
+[ ] Add a private int32 Balance initialized to zero, with UPROPERTY(VisibleInstanceOnly, Category = "Currency").
+[ ] Declare a public BlueprintPure int32 GetBalance() const and implement it to return Balance.
+[ ] Build Development Editor / Win64 and audit the result.
+- Reassess these next steps after the course review; the full design remains provisional.
+
+Project and scope
+- This plan concerns UIInventorySystem, the project inspected through Unreal MCP.
+- Its project directory is C:/Users/david/Documents/Unreal Projects/UIInventorySystem.
+- This note belongs to the UIInventorySystem workspace. Sensations8 is a separate project; do not implement this plan there.
+- User is taking an inventory course and prefers C++. Recommended direction: C++ core rules with Blueprint presentation and editor configuration.
+- The original architecture review made no Unreal asset or source changes. The user subsequently created the C++ component skeleton recorded above; further implementation is now paused.
+
+Original course baseline - recorded 2026-10-21; recheck after further course work
+- /Game/Inventory/Assets contains Eatables, Money, Shields, and Swords.
+- /Game/Inventory/Blueprints/BP_Money uses /Game/Inventory/Structs/S_Money and /Game/Inventory/DataTables/DT_Money.
+- S_Money has Name, Amount, and Mesh fields.
+- DT_Money values: Green=1, Blue=5, Gold=10, Red=15, Silver=3. Preserve these user-defined values unless asked otherwise.
+- BP_Money Construction Script uses the Money row handle's RowName, but hardcodes DT_Money; the handle's DataTable field is unused.
+- Successful lookup sets SM_Money. Name and Amount are unused; Row Not Found has no handling.
+- BeginPlay, ActorBeginOverlap, and Tick have no connected behavior in BP_Money.
+- Placed Green, Blue, and Gold instances have the expected meshes.
+- Existing Money assets use the folder spelling Sliver for Silver; do not rename casually.
+- Previously configured materials are saved. Preserve them during gameplay work.
+
+Phase 1 - Complete one working currency pickup
+[ ] Confirm Unreal MCP is connected to UIInventorySystem and recheck the current assets before editing; course work may have advanced.
+[ ] After the user explicitly resumes, review the completed course section together and confirm the revised C++ implementation scope.
+[ ] Keep DT_Money initially. If adopting a native row struct, plan and verify migration of S_Money data and existing references before replacing anything.
+[ ] Use one consistent definition lookup: honor the complete row handle or expose a fixed table plus row selection without a misleading unused table field.
+[ ] Add explicit handling for missing rows, invalid values, and missing meshes.
+[ ] Keep construction logic for visual preview; implement collection in gameplay logic.
+[ ] Add currency ownership and operations in C++: get balance, add currency, and try spending with validation.
+[ ] Use a C++ pickup base with a Blueprint child for mesh, collision configuration, and effects.
+[ ] Apply the row's Amount as the rupee denomination; keep denomination separate from pickup quantity.
+[ ] Make collection happen only once, including when overlap events repeat.
+[ ] Remove the pickup only after currency is successfully credited.
+[ ] Emit a balance-changed event and update a simple UMG/Blueprint display from that event.
+[ ] Verify the complete path: select rupee row -> correct mesh -> collect once -> correct balance increase -> UI update.
+[ ] Check invalid rows, repeated overlaps, and unsuccessful spending as well as the normal path.
+
+Phase 2 - Add stackable inventory items
+[ ] Separate shared item definitions from per-inventory entries.
+    Definition examples: stable item ID, display name, icon, mesh, maximum stack size.
+    Entry examples: definition ID/reference and owned quantity.
+[ ] Add a C++ inventory component as the sole owner of inventory changes.
+[ ] Expose clear operations such as TryAddItem, RemoveItem, and GetQuantity to Blueprints.
+[ ] Define stack limits and capacity rules; report how much an add operation accepted.
+[ ] Retain the world pickup when no items fit, or retain its remainder after partial collection.
+[ ] Emit inventory-changed events for UI updates instead of checking inventory every frame.
+[ ] Keep widgets responsible for display and requests; keep quantity and capacity rules in the component.
+[ ] Verify with one food item: collect, stack, reach capacity, partially collect, and remove/use.
+
+Phase 3 - Equipment and persistence
+[ ] Add per-instance equipment state, such as sword durability, separately from shared definitions.
+[ ] Add equip/unequip rules only after the basic inventory works.
+[ ] Choose ownership across character respawns and define save/load requirements before relying on inventory persistence.
+[ ] Save item identifiers, quantities, currency, and any per-instance state; reconstruct from definitions on load.
+[ ] Decide how missing or changed definitions should behave when loading older saves.
+
+Keep the scope manageable
+- Keep the current Data Tables unless a concrete requirement justifies Data Assets.
+- Consider Data Assets later for items with substantially different configuration; avoid duplicating the same authoritative data in multiple places.
+- Keep editable values and visual effects accessible in the editor.
+- Do not build a large generalized framework before one currency pickup and one stackable food item work end to end.
+- Follow the course for concepts, evaluate each design as it appears, and implement core rules in C++ where useful. Blueprint-only is not inherently a bad design.
+
+References
+- Epic: Balancing Blueprint and C++
+  https://dev.epicgames.com/documentation/en-us/unreal-engine/balancing-blueprint-and-cplusplus?application_version=4.27
+- Epic: Manage Items and Data
+  https://dev.epicgames.com/documentation/en-us/unreal-engine/coder-05-manage-item-and-data-in-an-unreal-engine-game
+
+Recovery note (2026-10-21)
+- Recovered from saved Codex session 01a1609a-8a51-7d52-a1f0-f385f3a0a802, whose working directory was Sensations8.
+- The session recorded creation of this TODO in Sensations8/Docs; that file was absent when checked during recovery.
+- Restored here from the original recorded file contents, with the workspace-location note corrected.
+- Starting-point observations and unchecked tasks are from the earlier review; gameplay assets have not been revalidated in this recovery.
+
+
+======================================================================
+SESSION HANDOFF - 2026-10-22 - Inventory UI / Tab input
+Appended only; all earlier plans and progress above are preserved.
+======================================================================
+
+Pause and scope
+- User is tired and explicitly requested stopping and saving for tomorrow.
+- Resume only when the user returns and asks to continue. No scheduled task was requested.
+- Work belongs to UIInventorySystem, not Sensations8.
+- The larger C++ inventory/currency implementation remains paused pending the course review. Today's work was the separately requested course UI/input exercise.
+- Teaching agreement remains: the USER implements; the assistant explains and audits in batches of THREE steps. Do not edit source or Blueprint assets for the user.
+- User explicitly requested preserving earlier TODO content. Append future handoff notes rather than overwriting prior plans.
+
+Completed during the UI exercise
+[x] IA_Inventory is Boolean; IMC_Inventory maps Tab with a Pressed trigger.
+[x] Character Blueprint assigns InventoryOpenAction; controller Blueprint registers IMC_Inventory through DefaultMappingContexts.
+[x] AUIInventorySystemCharacter::OpenInventorySystem casts GetController() to AUIInventorySystemPlayerController and calls ToggleInventory().
+[x] Controller stores InventoryWidgetClass and a transient InventoryWidget reference; creates one widget instance and reuses it.
+[x] ShowInventory, HideInventory, ToggleInventory, and the declared IsNotALocalPlayerController helper are implemented.
+[x] WBP_Inventory is assigned in the controller Blueprint; the user confirmed opening works.
+[x] Opening displays the cursor, calls SetIgnoreLookInput(true), applies FInputModeUIOnly, and focuses InventoryWidget->TakeWidget().
+[x] Closing removes the widget, hides the cursor, calls SetIgnoreLookInput(false), and restores FInputModeGameOnly.
+[x] WBP_Inventory Is Focusable was verified true.
+[x] HideInventory is BlueprintCallable. Button_0 OnClicked uses Get Owning Player -> cast to project controller -> HideInventory. The user confirmed this UI Only / button-closing flow works.
+[x] OnPreviewKeyDown checks for Tab. Other keys return Unhandled; repeated Tab returns Handled without closing; fresh Tab casts the owning controller, calls HideInventory, and returns Handled; Cast Failed returns Unhandled. Actual pin connections were audited, including branches omitted by the DSL summary.
+- The user learned Handled/Unhandled: replies report whether a UI key event was consumed. Handled does not itself close the widget; Unhandled does not switch to gameplay input.
+- InventoryWidget Blueprint exposure was explained, but recheck its current UPROPERTY before assuming BlueprintReadOnly was added.
+
+Open issue - NOT resolved
+[ ] Holding Tab while closing the inventory can reopen it immediately.
+- User reproduced this after the repeat guard was added.
+- Likely cause: UI closes on key-down, restores Game Only while Tab remains held, and gameplay Enhanced Input activates the open action again. This is a working diagnosis, not a traced engine-level proof.
+- The widget's Is Repeat guard only protects its own handler while the widget is active; it does not guarantee suppression after control returns to gameplay.
+- Do not mark the full keyboard toggle behavior complete until the held-key regression is tested.
+
+Proposed next batch - EXPLAINED, NOT IMPLEMENTED OR VALIDATED
+Goal: close on a fresh closing Tab press's RELEASE, after the physical key is up.
+1. In WBP_Inventory, add Boolean CloseOnTabRelease (default false). Reset it to false from Event Construct.
+2. In OnPreviewKeyDown, replace the fresh-Tab close path with Set CloseOnTabRelease = true -> Return Handled. Keep repeated Tab handled without closing, and other keys unhandled.
+3. Add OnKeyUp. Check Key == Tab AND CloseOnTabRelease. True: reset the Boolean to false, cast Get Owning Player to the project controller, call HideInventory, and return Handled. False / cast failure: return Unhandled.
+- The opening press is handled by gameplay, so its release should not close the newly opened inventory. A later fresh Tab press arms closing, and its release closes it.
+- Keep the existing Close button working.
+- Reinspect the widget before giving edits: at the pause checkpoint, only EventGraph and OnPreviewKeyDown graphs existed; no OnKeyUp graph was present, and OnPreviewKeyDown still closed on fresh key-down. Do not assume the proposed Boolean exists.
+- Audit the user's wiring before testing; verify the focus and event routing with the Close button focused too.
+
+Acceptance checks after the proposed fix
+[ ] Press/release Tab to open: inventory stays open after that initial release.
+[ ] Hold the opening Tab press: no repeat closing.
+[ ] Fresh Tab press to close: holding it does not reopen; releasing closes; the next fresh press opens again.
+[ ] Close button still closes; opening again works afterward.
+[ ] Cursor and look-input state restore after either closing method; normal gameplay input returns.
+[ ] Repeat multiple open/close cycles and check for focus or input-state regressions.
+
+Files and guide
+- Source/UIInventorySystem/UIInventorySystemCharacter.h and .cpp
+- Source/UIInventorySystem/UIInventorySystemPlayerController.h and .cpp
+- /Game/Inventory/Widgets/WBP_Inventory
+- /Game/Inventory/Input/IA_Inventory and IMC_Inventory
+- Docs/Inventory-UI-CPP-Guide.txt: existing shareable guide covers the earlier input/window toggle implementation. It predates the UI Only, cursor/look, Close button, and widget keyboard-handling additions. Preserve it; update or extend only when requested.
+- This handoff saves notes only. It does not save any unsaved Unreal/IDE buffers, compile, or change gameplay code/assets.

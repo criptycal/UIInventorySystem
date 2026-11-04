@@ -1,0 +1,430 @@
+OPEN AND CLOSE AN INVENTORY WITH TAB IN UNREAL ENGINE C++
+Learning guide based on UIInventorySystem | Unreal Engine 5.8 | 2026-10-22
+
+Build a small, understandable input-to-UI flow:
+
+    Tab -> IMC_Inventory -> IA_Inventory
+        -> Character::OpenInventorySystem()
+        -> PlayerController::ToggleInventory()
+        -> ShowInventory() or HideInventory()
+
+The result is an inventory window that opens, closes, and reopens using the
+same widget object. Work through each batch of three steps, compile at the
+checkpoints, and test before moving on.
+
+This guide covers input and window visibility. Item storage, currency,
+equipment, saving, mouse interaction, focus, pausing, and blocking movement
+are separate tasks. The earlier CurrencyComponent exercise is not required.
+
+BEFORE STARTING
+
+The examples extend an existing C++ Third Person template project. Preserve
+its movement, camera, touch controls, and existing input setup. Add the shown
+members and functions; do not replace entire template classes with snippets.
+
+Our project uses:
+    AUIInventorySystemCharacter
+    AUIInventorySystemPlayerController
+    BP_ThirdPersonCharacter
+    BP_ThirdPersonPlayerController
+    WBP_Inventory
+
+If your project has different names, substitute them consistently, including
+header filenames and the class names before :: in function definitions.
+
+Confirm your active GameMode uses the intended character Blueprint and player
+controller Blueprint. Check the current level's GameMode override too. Those
+Blueprints must inherit from the corresponding project C++ classes.
+
+The game module's .Build.cs needs EnhancedInput and UMG alongside its existing
+dependencies. Both are already present in UIInventorySystem. This guide also
+assumes the template's Enhanced Input system is already working for movement.
+
+Our logs use LogUIInventorySystem, declared in UIInventorySystem.h. Readers
+using another project can use their existing log category, or LogTemp instead.
+
+Save All before compiling or asking someone to audit files. Unsaved changes
+in an IDE are not present in the saved files being reviewed.
+
+WHY THESE CLASSES?
+
+ACharacter is Unreal's engine class. AUIInventorySystemCharacter is our
+project's subclass. Jump() is inherited from the engine; opening an inventory
+is behavior we add to our own project. Do not edit engine Character.h/.cpp.
+
+The character receives the input. The player controller coordinates the
+player's window. The widget Blueprint contains its visual design.
+
+Owning items is a separate responsibility from displaying them. A future
+inventory component can be used by both players and NPCs, each with separate
+item data. An NPC does not need a Tab input binding to own an inventory.
+
+The template's DoMove/DoLook functions are callable from touch-control
+Blueprints as well as from input-handling code. The prefix "Do" is just a
+naming convention. OpenInventorySystem is our chosen handler name; although
+it says "Open", the final version forwards to a toggle. Keep its declaration,
+definition, and binding consistent if you rename it later.
+
+BATCH 1: CREATE AND BIND THE INPUT
+
+1. Configure the assets in the editor.
+
+   Under Content/Inventory/Input, create an Input Action named IA_Inventory.
+   Set its Value Type to Digital (bool), also described as Boolean. Leave the
+   action's Triggers and Modifiers empty for this setup.
+
+   Create an Input Mapping Context named IMC_Inventory. Add a mapping from
+   Tab to IA_Inventory. On that mapping, add a Pressed trigger. Save both.
+
+   This guide binds ETriggerEvent::Triggered because the Pressed trigger
+   produces a single trigger when pressed, without repeating while held.
+   Do not omit the Pressed trigger and assume Triggered will behave the same.
+   Epic reference: https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/EnhancedInput/UInputTriggerPressed
+
+2. Declare the action and handler in the character header.
+
+   The template already forward-declares UInputAction outside the class:
+
+       class UInputAction;
+
+   Under protected: inside AUIInventorySystemCharacter, add:
+
+       UPROPERTY(EditAnywhere, Category = "Input")
+       UInputAction* InventoryOpenAction;
+
+   Under public:, add:
+
+       /** Handles the player's inventory UI request. */
+       UFUNCTION(BlueprintCallable, Category = "Input")
+       virtual void OpenInventorySystem();
+
+   BlueprintCallable allows Blueprint callers, such as a future on-screen
+   inventory button. It is not required merely to call a function from C++.
+
+   Keep the existing .generated.h as the last #include in the header.
+
+3. Bind the action and initially log its execution.
+
+   Inside the existing successful UEnhancedInputComponent cast block in
+   SetupPlayerInputComponent(), add this beside the movement/jump bindings:
+
+       if (InventoryOpenAction)
+       {
+           EnhancedInputComponent->BindAction(
+               InventoryOpenAction,
+               ETriggerEvent::Triggered,
+               this,
+               &AUIInventorySystemCharacter::OpenInventorySystem);
+       }
+
+   The arguments identify the action, event, receiving object, and function.
+   The null check skips the binding if the action has not been assigned.
+
+   Add this function definition to the character .cpp:
+
+       void AUIInventorySystemCharacter::OpenInventorySystem()
+       {
+           UE_LOG(LogUIInventorySystem, Log, TEXT("Inventory input received"));
+       }
+
+   Save All, close Unreal Editor, and build your game project using
+   Development Editor / Win64. Reopen the editor after a successful build.
+
+BATCH 2: ACTIVATE AND TEST THE INPUT
+
+1. Assign the action to the character Blueprint.
+
+   Open BP_ThirdPersonCharacter -> Class Defaults. Find Inventory Open Action
+   under Input and assign IA_Inventory. Compile and save the Blueprint.
+
+2. Activate the mapping context through the controller.
+
+   Open BP_ThirdPersonPlayerController -> Class Defaults. Add IMC_Inventory
+   to Default Mapping Contexts. Keep the existing IMC_Default entry.
+   Compile and save.
+
+   This array belongs to our template controller. Its existing
+   SetupInputComponent() obtains the local player's Enhanced Input subsystem
+   and registers every entry with AddMappingContext(CurrentContext, 0).
+
+   Merely assigning an IA to the character does not activate its IMC. Merely
+   saving an IMC asset does not activate it either.
+
+   If your controller has no Default Mapping Contexts property, inspect its
+   existing context-registration code first. That property is not built into
+   every APlayerController. Use your project's existing registration path to
+   add this context once instead of duplicating the template implementation.
+
+3. Test before adding widget behavior.
+
+   Start Play, click the game viewport, and press Tab. In Output Log, expect:
+
+       Inventory input received
+
+   Holding Tab should not repeat the message. Release and press again for
+   another message. This confirms both halves of the input connection:
+
+       Active IMC: Tab -> IA_Inventory
+       Binding:    IA_Inventory -> character function
+
+BATCH 3: PREPARE THE PLAYER CONTROLLER
+
+1. Add a configurable widget class.
+
+   The controller header should forward-declare UUserWidget outside the class:
+
+       class UUserWidget;
+
+   Under protected: inside AUIInventorySystemPlayerController, add:
+
+       UPROPERTY(EditDefaultsOnly, Category = "UI|Inventory")
+       TSubclassOf<UUserWidget> InventoryWidgetClass;
+
+   This stores the widget type to create, such as WBP_Inventory. It is selected
+   in the controller Blueprint's Class Defaults; it is not a live window.
+
+2. Store the runtime widget separately.
+
+   In the same protected section, add:
+
+       UPROPERTY(Transient)
+       TObjectPtr<UUserWidget> InventoryWidget;
+
+   This holds the created instance. UPROPERTY makes the reference visible to
+   Unreal's garbage collector. Transient excludes this runtime reference from
+   normal serialization. It does not mean "destroy immediately after use."
+
+3. Declare and define a public entry point.
+
+   Under public:, add:
+
+       void ShowInventory();
+
+   In the controller .cpp, initially define:
+
+       void AUIInventorySystemPlayerController::ShowInventory()
+       {
+           UE_LOG(LogUIInventorySystem, Log,
+               TEXT("Controller received inventory request"));
+       }
+
+   Save, close the editor, and build. This checkpoint verifies the new members
+   and function signature before implementing widget creation.
+
+BATCH 4: DISPLAY THE WIDGET
+
+1. Forward the character's request to its controller.
+
+   Add this include to the character .cpp:
+
+       #include "UIInventorySystemPlayerController.h"
+
+   Replace the existing OpenInventorySystem definition with:
+
+       void AUIInventorySystemCharacter::OpenInventorySystem()
+       {
+           UE_LOG(LogUIInventorySystem, Log, TEXT("Inventory input received"));
+
+           AUIInventorySystemPlayerController* InventoryController =
+               Cast<AUIInventorySystemPlayerController>(GetController());
+
+           if (InventoryController)
+           {
+               InventoryController->ShowInventory();
+           }
+       }
+
+   GetController() supplies the controller possessing this character. Cast
+   returns a pointer of our controller type when compatible, otherwise null.
+   The if checks that result before using it. Declaring the pointer before
+   the if, as above, is valid; declaring it inside the condition is also valid.
+
+2. Implement ShowInventory in the controller .cpp.
+
+   Ensure the controller .cpp includes Blueprint/UserWidget.h. Our template
+   already includes it for mobile controls. Replace the stub with:
+
+       void AUIInventorySystemPlayerController::ShowInventory()
+       {
+           UE_LOG(LogUIInventorySystem, Log,
+               TEXT("Controller received inventory request"));
+
+           if (!IsLocalPlayerController()) return;
+
+           if (!InventoryWidgetClass)
+           {
+               UE_LOG(LogUIInventorySystem, Warning,
+                   TEXT("InventoryWidgetClass is not assigned"));
+               return;
+           }
+
+           if (InventoryWidget == nullptr)
+           {
+               InventoryWidget = CreateWidget<UUserWidget>(
+                   this, InventoryWidgetClass);
+           }
+
+           if (InventoryWidget && !InventoryWidget->IsInViewport())
+           {
+               InventoryWidget->AddToPlayerScreen();
+           }
+       }
+
+   The local-controller check limits the operation to the player's local UI.
+   The missing-class check stops invalid creation attempts: a warning alone
+   does not stop execution, so the return is necessary.
+
+   CreateWidget uses this controller as owning player. The null check means
+   we create one widget object and reuse it. The final condition checks that
+   creation succeeded and avoids adding an already-displayed widget again.
+   AddToPlayerScreen places the widget in the owning player's screen area.
+   Epic reference: https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/UMG/UUserWidget
+
+3. Build, assign the widget Blueprint, and test.
+
+   Save, close Unreal Editor, and build Development Editor / Win64. Reopen.
+   Create a Widget Blueprint named WBP_Inventory under Content/Inventory/Widgets
+   if you do not already have one. Give it visible content in the Designer;
+   this guide uses the existing course widget and does not reproduce its art.
+
+   In BP_ThirdPersonPlayerController -> Class Defaults -> UI -> Inventory,
+   assign WBP_Inventory to Inventory Widget Class. Compile and save.
+
+   Play and press Tab. The inventory should appear. At this checkpoint, more
+   presses do not close it; they should not add duplicate windows either.
+
+BATCH 5: CLOSE AND REOPEN WITH THE SAME KEY
+
+1. Add the closing function and local-player helper.
+
+   In the controller header's protected section, declare:
+
+       bool IsNotALocalPlayerController();
+
+   In its public section, alongside ShowInventory, declare:
+
+       void HideInventory();
+       void ToggleInventory();
+
+   Add these definitions to the controller .cpp:
+
+       bool AUIInventorySystemPlayerController::IsNotALocalPlayerController()
+       {
+           return !IsLocalPlayerController();
+       }
+
+       void AUIInventorySystemPlayerController::HideInventory()
+       {
+           if (IsNotALocalPlayerController()) return;
+
+           if (InventoryWidget && InventoryWidget->IsInViewport())
+           {
+               InventoryWidget->RemoveFromParent();
+           }
+       }
+
+   The helper was a readability choice made during this exercise. Calling
+   !IsLocalPlayerController() directly is equally valid. If you use the helper,
+   remember to declare it in the class as well as define it in the .cpp.
+
+   RemoveFromParent removes the widget from the player screen. We retain our
+   reference, allowing ShowInventory to display the same UObject again.
+   Widget Construct/Destruct events can run again as its Slate UI is rebuilt;
+   do not assume every widget event happens only once for that retained object.
+   Epic reference: https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/UMG/UWidget/RemoveFromParent
+
+2. Implement the decision between showing and hiding.
+
+       void AUIInventorySystemPlayerController::ToggleInventory()
+       {
+           if (IsNotALocalPlayerController()) return;
+
+           if (InventoryWidget && InventoryWidget->IsInViewport())
+           {
+               HideInventory();
+           }
+           else
+           {
+               ShowInventory();
+           }
+       }
+
+   Use if/else so only one branch runs per request. No additional open/closed
+   Boolean is needed for this add/remove implementation. IsInViewport checks
+   screen attachment, not whether a widget is visually obscured or Hidden.
+   Revisit this state model if you later switch to visibility or animations.
+
+3. Route the input to the toggle, then build and test.
+
+   Inside the character's OpenInventorySystem function, change only the call:
+
+       InventoryController->ToggleInventory();
+
+   Keep its cast, null check, action assignment, and input binding.
+   Save All, close the editor, and build. Reopen and test:
+
+       First press:  opens the inventory.
+       Second press: closes it.
+       Third press:  reopens it.
+       Hold Tab:     no repeated toggling.
+
+   This completes the window-visibility exercise. Keep gameplay input active
+   for this test; no input-mode change or game pause is introduced here.
+
+TROUBLESHOOTING
+
+No input log:
+    Check IA_Inventory on the possessed character Blueprint, IMC_Inventory in
+    the active controller's registered contexts, and that the game viewport
+    has keyboard focus. Confirm the actual GameMode/controller/pawn classes.
+
+Character log appears, but no controller response when opening:
+    Check the controller cast and whether the active controller Blueprint
+    inherits from your project controller class. A failed cast skips the call.
+    The controller response log is inside ShowInventory; closing does not
+    print that message in this implementation.
+
+"InventoryWidgetClass is not assigned":
+    Assign WBP_Inventory in the controller Blueprint, not the character.
+    Compile and save that Blueprint. Check that the game uses this controller.
+
+Controller log appears, but the window is not visible:
+    Check the widget's visible content, visibility, and layout. Inspect Output
+    Log for widget-creation errors. Creation and AddToPlayerScreen can fail;
+    this small exercise guards a null instance but does not log every failure.
+
+Compiler says a function is not a member or cannot resolve its definition:
+    Match spelling and parameters between header declaration, .cpp definition,
+    and callers. During development we renamed DoOpenInventorySystem to
+    OpenInventorySystem; a leftover old definition caused this exact issue.
+
+Warnings appear but execution still continues:
+    UE_LOG reports a message. It does not return from your function. Add an
+    explicit return where later code must not run.
+
+An audit misses code you can see in the IDE:
+    Save All. A file-based audit sees the disk version, not unsaved editor tabs.
+
+The window opens and immediately closes or flickers:
+    Confirm the Pressed trigger and check for duplicate Blueprint/C++ handlers
+    responding to the same key. Keep one path responsible for this toggle.
+
+Tab stops closing after adding UI focus or pausing later:
+    That changes how input is routed. UI-only input, focused widgets consuming
+    Tab, or paused input can prevent the character binding from receiving it.
+    Design the UI close action and focus/input restoration together at that
+    stage instead of assuming this gameplay binding always receives the key.
+
+WHAT COMES NEXT
+
+Cursor display, UI focus, closing from a button, and restoring movement/look
+input are the next UI exercises. This guide does not yet implement those.
+
+The full C++ inventory remains separate: reusable item data and rules can live
+in an inventory component, while the player controller coordinates the UI.
+Finish reviewing the course's wider design before deciding what to replace.
+
+About this guide: snippets were checked against the saved project source.
+The learner confirmed the input log and opening the window during this session.
+The final toggle was source-audited; use the open/close/reopen test above to
+verify it in your own project. No automated or packaged-game test is claimed.
