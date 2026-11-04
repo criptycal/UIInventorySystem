@@ -31,6 +31,14 @@ void AUIInventorySystemPlayerController::BeginPlay()
 		}
 
 	}
+
+	if (IsLocalPlayerController())
+	{
+		// Bind to the OnPawnChanged event to handle HUD updates
+		OnPossessedPawnChanged.AddUniqueDynamic(this, &AUIInventorySystemPlayerController::HandleHUDPawnChanged);
+
+		HandleHUDPawnChanged(nullptr, GetPawn());
+	}
 }
 
 void AUIInventorySystemPlayerController::SetupInputComponent()
@@ -87,6 +95,12 @@ void AUIInventorySystemPlayerController::ShowInventory()
 	if (InventoryWidget && !InventoryWidget->IsInViewport())
 	{
 		InventoryWidget->AddToPlayerScreen();
+
+		if (PlayerHUDWidget)
+		{
+			PlayerHUDWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+
 		bShowMouseCursor = true;
 		SetIgnoreLookInput(true);
 
@@ -95,6 +109,8 @@ void AUIInventorySystemPlayerController::ShowInventory()
 		InputMode.SetWidgetToFocus(InventoryWidget->TakeWidget());
 		SetInputMode(InputMode);
 	}
+
+
 }
 
 void AUIInventorySystemPlayerController::HideInventory()
@@ -104,6 +120,12 @@ void AUIInventorySystemPlayerController::HideInventory()
 	if (InventoryWidget && InventoryWidget->IsInViewport())
 	{
 		InventoryWidget->RemoveFromParent();
+
+		if (PlayerHUDWidget)
+		{
+			PlayerHUDWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+
 		bShowMouseCursor = false;
 		SetIgnoreLookInput(false);
 		SetInputMode(FInputModeGameOnly());
@@ -122,4 +144,39 @@ void AUIInventorySystemPlayerController::ToggleInventory()
 	{
 		ShowInventory();
 	}
+}
+
+void AUIInventorySystemPlayerController::HandleHUDPawnChanged(APawn* PrevPawn, APawn* NewPawn)
+{
+	if (!IsLocalPlayerController()) return;
+	
+	if (PlayerHUDWidget)
+	{
+		PlayerHUDWidget->RemoveFromParent();
+		PlayerHUDWidget = nullptr;
+	}
+
+	if (!NewPawn) return;
+
+	if (!PlayerHUDWidgetClass)
+	{
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("PlayerHUDWidgetClass is not assigned"));
+		return;
+	}
+	
+	PlayerHUDWidget = CreateWidget<UUserWidget>(this, PlayerHUDWidgetClass);
+
+	if (!PlayerHUDWidget)
+	{
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("Failed to create PlayerHUDWidget"));
+		return;
+	}
+
+	PlayerHUDWidget->AddToPlayerScreen(0);
+
+	const bool bInventoryOpen = InventoryWidget && InventoryWidget->IsInViewport();
+
+	PlayerHUDWidget->SetVisibility(bInventoryOpen ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+
+
 }

@@ -42,6 +42,15 @@ protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UUserWidget> InventoryWidget;
 
+	UPROPERTY(EditDefaultsOnly, Category = "UI|HUD")
+	TSubclassOf<UUserWidget> PlayerHUDWidgetClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> PlayerHUDWidget;
+
+	UFUNCTION()
+	void HandleHUDPawnChanged(APawn* PrevPawn, APawn* NewPawn);
+
 	/** If true, the player will use UMG touch controls even if not playing on mobile platforms */
 	UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
 	bool bForceTouchControls = false;

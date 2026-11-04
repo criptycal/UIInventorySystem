@@ -6,6 +6,10 @@
 #include "Components/ActorComponent.h"
 #include "HealthComponent.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+	FOnHealthChanged,
+	float, NewCurrentHealth,
+	float, NewMaxHealth);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class UIINVENTORYSYSTEM_API UHealthComponent : public UActorComponent
@@ -22,8 +26,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Health")
 	float GetCurrentHealth() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	bool ApplyDamage(float DamageAmount);
+
+	UFUNCTION(BlueprintCallable, Category = "Health")
+	bool Heal(float HealAmount);
+
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+	UPROPERTY(BlueprintAssignable, Category = "Health")
+	FOnHealthChanged OnHealthChanged;
+
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;

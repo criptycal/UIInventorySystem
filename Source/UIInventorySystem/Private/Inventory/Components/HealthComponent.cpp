@@ -23,6 +23,7 @@ void UHealthComponent::BeginPlay()
 
 	MaxHealth = FMath::Max(MaxHealth, 1.0f);
 	CurrentHealth = MaxHealth;
+	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
 	// CurrentHealth = FMath::Clamp(2.5, 0.0f, MaxHealth); testing health
 	
 }
@@ -44,5 +45,41 @@ float UHealthComponent::GetMaxHealth() const
 float UHealthComponent::GetCurrentHealth() const
 {
 	return CurrentHealth;
+}
+
+bool UHealthComponent::ApplyDamage(float DamageAmount)
+{
+	bool bAmountIsFinite = FMath::IsFinite(DamageAmount);
+	if (!bAmountIsFinite ||DamageAmount <= 0.0f || CurrentHealth <= 0.0f)
+	{
+		return false; // No damage applied
+	}
+	const float NewHealth = FMath::Max(CurrentHealth - DamageAmount, 0.0f);
+
+	if (NewHealth == CurrentHealth)
+	{
+		return false; // No damage applied
+	}
+
+	CurrentHealth = NewHealth;
+	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+	return true; // Damage applied successfully
+}
+
+bool UHealthComponent::Heal(float HealAmount)
+{
+	bool bAmountIsFinite = FMath::IsFinite(HealAmount);
+	if (!bAmountIsFinite || HealAmount <= 0.0f || CurrentHealth >= MaxHealth)
+	{
+		return false; // No healing applied
+	}
+	const float NewHealth = FMath::Min(CurrentHealth + HealAmount, MaxHealth);
+	if (NewHealth == CurrentHealth)
+	{
+		return false; // No healing applied
+	}
+	CurrentHealth = NewHealth;
+	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+	return true; // Healing applied successfully
 }
 

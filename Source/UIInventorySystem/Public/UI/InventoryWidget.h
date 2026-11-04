@@ -10,7 +10,7 @@
  * 
  */
 
-// class UButton;
+class UButton;
 class UTextBlock;
 
 UCLASS()
@@ -39,6 +39,20 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> MoneyText;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> DamageTestButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> HealTestButton;
+
+	UFUNCTION()
+	void HandleDamageTestButtonClicked();
+
+	UFUNCTION()
+	void HandleHealTestButtonClicked();
+
+
 
 	// Close button support is kept here for later reuse; Tab handles closing.
 	// UPROPERTY(meta = (BindWidget))

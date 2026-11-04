@@ -8,6 +8,7 @@
 
 class UWrapBox;
 class UHeartWidget;
+class UHealthComponent;
 
 /**
  * 
@@ -20,11 +21,21 @@ class UIINVENTORYSYSTEM_API UHealthBarWidget : public UUserWidget
 protected:
 	virtual void NativeConstruct() override;
 
+	virtual void NativeDestruct() override;
+
 private:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UWrapBox> HealthBarWrapBox;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Health")
 	TSubclassOf<UHeartWidget> HeartWidgetClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UHealthComponent> BoundHealthComponent;
+
+	UFUNCTION()
+	void HandleHealthChanged(float NewHealth, float MaxHealth);
+
+
 	
 };

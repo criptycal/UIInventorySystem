@@ -5,10 +5,11 @@
 #include "UIInventorySystemPlayerController.h"
 #include "InputCoreTypes.h"
 #include "Input/Events.h"
-// #include "Components/Button.h"
+#include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "GameFramework/Pawn.h"
 #include "Inventory/Components/CurrencyComponent.h"
+#include "Inventory/Components/HealthComponent.h"
 
 
 void UInventoryWidget::NativeOnInitialized()
@@ -17,6 +18,18 @@ void UInventoryWidget::NativeOnInitialized()
 
 	SetIsFocusable(true);
 	SetVisibility(ESlateVisibility::Visible);
+
+	if (DamageTestButton)
+	{
+		
+		DamageTestButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleDamageTestButtonClicked);
+	}
+
+	if (HealTestButton)
+	{
+		
+		HealTestButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleHealTestButtonClicked);
+	}
 
 	// if (Button_0)
 	// {
@@ -99,6 +112,33 @@ FReply UInventoryWidget::NativeOnKeyUp(
 	}
 	return FReply::Unhandled();
 }
+
+void UInventoryWidget::HandleDamageTestButtonClicked()
+{
+	APawn* PlayerPawn = GetOwningPlayerPawn();
+	if (PlayerPawn)
+	{
+		UHealthComponent* HealthComp = PlayerPawn->FindComponentByClass<UHealthComponent>();
+		if (HealthComp)
+		{
+			HealthComp->ApplyDamage(0.5f);
+		}
+	}
+}
+
+void UInventoryWidget::HandleHealTestButtonClicked()
+{
+	APawn* PlayerPawn = GetOwningPlayerPawn();
+	if (PlayerPawn)
+	{
+		UHealthComponent* HealthComp = PlayerPawn->FindComponentByClass<UHealthComponent>();
+		if (HealthComp)
+		{
+			HealthComp->Heal(0.5f);
+		}
+	}
+}
+
 
 // void UInventoryWidget::HandleCloseButtonClicked()
 // {

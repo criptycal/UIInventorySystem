@@ -13,6 +13,9 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Store maximum/current health on the character in **heart units**.
 - Generate the heart widgets automatically from maximum health.
 - Display full, half, and empty heart textures.
+- Apply damage and healing through the HealthComponent, with immediate heart updates.
+- Show the heart bar during gameplay and switch to the inventory's heart bar while it is open.
+- Test damage and healing with temporary inventory buttons, each changing health by half a heart.
 
 The current UI contains the inventory heading, currency display, background blur, and heart bar. Item slots, drag-and-drop, equipment, and other complete inventory features are still future work.
 
@@ -23,13 +26,13 @@ A native class defines behavior and exposes selected properties to Unreal. A Blu
 | C++ class | Editor connection | Responsibility |
 | --- | --- | --- |
 | `AUIInventorySystemCharacter` | `BP_ThirdPersonCharacter` | Owns the currency and health components; forwards the inventory input request to the controller. |
-| `AUIInventorySystemPlayerController` | Player-controller Blueprint defaults | Registers input mappings; creates/reuses the configured inventory widget; switches input mode and cursor state. |
+| `AUIInventorySystemPlayerController` | `BP_ThirdPersonPlayerController` defaults | Registers input mappings; owns the inventory and gameplay HUD; switches visibility, input mode, and cursor state. |
 | `UCurrencyComponent` | Inherited component on the character | Owns the balance and validates additions/spending. |
-| `UHealthComponent` | Inherited component on the character | Owns maximum/current health and initializes the character at full health. |
+| `UHealthComponent` | Inherited component on the character | Owns maximum/current health, validates damage/healing, initializes full health, and broadcasts changes. |
 | `AMoneyPickup` | `BP_Money` and its placed instances | Creates collision/mesh components, reads a currency row, and handles collection. |
 | `FMoneyRow` | `DT_MoneyNative` | Defines each row's display name, amount, and mesh. |
-| `UInventoryWidget` | Parent of `WBP_Inventory` | Handles UI keyboard input and updates the currency text. |
-| `UHealthBarWidget` | Parent of `WBP_HealthBar` | Reads the character's health and creates the required heart widgets. |
+| `UInventoryWidget` | Parent of `WBP_Inventory` | Handles UI keyboard input, updates currency text, and forwards test-button clicks to the HealthComponent. |
+| `UHealthBarWidget` | Parent of `WBP_HealthBar` | Creates heart widgets, subscribes to health changes, updates their fill, and removes its subscription during destruction. |
 | `UHeartWidget` | Parent of `WBP_Heart` | Chooses the texture for one heart. |
 
 ### Native components
@@ -62,6 +65,8 @@ TObjectPtr<UImage> HeartImage;
 
 It does not create an image. `WBP_Heart` provides the image and layout; C++ uses the bound reference to change its brush texture. Keep **Is Variable** enabled for these named widgets.
 
+The inventory also uses `BindWidgetOptional` for `DamageTestButton` and `HealTestButton`, both Buttons. Their names must match when present, but they can be removed from the Designer without making those bindings mandatory. Their click handlers are registered once in `NativeOnInitialized()`. Set **Is Focusable = false** on these test buttons in the Designer so keyboard focus stays with the inventory.
+
 ### Editor properties and class selections
 
 - `EditDefaultsOnly` exposes shared defaults, such as maximum health, the heart textures, and the widget class to create.
@@ -71,6 +76,8 @@ It does not create an image. `WBP_Heart` provides the image and layout; C++ uses
 - `TSubclassOf<UHeartWidget>` stores a **class to instantiate**, while `TObjectPtr<UHeartWidget>` would refer to an existing object.
 
 Set the controller's **Inventory Widget Class** to `WBP_Inventory`, and `WBP_HealthBar`'s **Heart Widget Class** to `WBP_Heart`. These Blueprint classes include the Designer layouts and texture assignments needed by the native behavior.
+
+Set the controller's **Player HUD Widget Class** to `WBP_PlayerHUD`. This asset inherits from `UserWidget` and contains a `WBP_HealthBar`; it needs no Blueprint graph logic or separate native HUD class.
 
 Saved Blueprint defaults can override C++ defaults. Changing `MaxHealth` in the header does not guarantee that an existing configured character Blueprint will use that new value; inspect its inherited HealthComponent in the editor.
 
@@ -125,15 +132,33 @@ The sphere collision and static-mesh components are created in C++. The editor s
 
 The project previously used two integer health points per heart. It now uses heart units throughout, so there is no division by two.
 
+A maximum of `13.5` creates 14 slots, with the last slot half full even at maximum health. Use a whole-number maximum when every container should be full at maximum health.
+
+### Damage, healing, and notifications
+
+[HealthComponent.cpp](Source/UIInventorySystem/Private/Inventory/Components/HealthComponent.cpp) provides `ApplyDamage(float)` and `Heal(float)`. Both reject nonfinite or nonpositive amounts. Damage stops at zero; healing stops at maximum health. They return `true` only when current health changes, and `false` for rejected requests or no change.
+
+After a successful change, the component broadcasts `OnHealthChanged(CurrentHealth, MaxHealth)`. It also broadcasts after initializing full health in `BeginPlay()`, allowing a bar constructed before component initialization to receive that initial state. Health remains owned by the component; neither the inventory nor the HUD stores a separate health total. Healing from zero is currently allowed; death and revival rules are not implemented yet.
+
+The temporary inventory buttons call `ApplyDamage(0.5f)` and `Heal(0.5f)` on the owning pawn's HealthComponent:
+
+```text
+Inventory button click
+  -> HealthComponent validates and changes health
+  -> OnHealthChanged broadcasts
+  -> Subscribed health bars update each heart's texture
+```
+
 ### Building the bar
 
 [HealthBarWidget.cpp](Source/UIInventorySystem/Private/UI/HealthBarWidget.cpp) runs this process in `NativeConstruct()`:
 
-1. Clear `HealthBarWrapBox`, preventing duplicate children when reconstruction occurs.
+1. Remove any previous health subscription and clear `HealthBarWrapBox`, preventing duplicate bindings and children when reconstruction occurs.
 2. Find the owning player's pawn and its HealthComponent.
 3. Calculate `HeartCount = FMath::CeilToInt(MaxHealth)`.
 4. Create a `WBP_Heart` for each slot and set its percentage.
 5. Add each created heart to the Wrap Box.
+6. Subscribe to the component's `OnHealthChanged` delegate with `AddUniqueDynamic`.
 
 The per-heart calculation is:
 
@@ -143,6 +168,8 @@ const float HeartPercent = FMath::Clamp(
 ```
 
 For `CurrentHealth = 2.5`, indices `0`, `1`, and `2` produce `1.0`, `1.0`, and `0.5`. The maximum determines slot count; current health determines fill. A fractional maximum is rounded up to provide a slot for its partial heart.
+
+`HandleHealthChanged()` applies that same calculation to the existing children, so damage and healing update the display without polling or rebuilding the bar. `NativeDestruct()` removes the subscription and clears the component reference. Slot count is established during construction; changing maximum health dynamically and rebuilding the slot count is not implemented yet.
 
 ### Choosing the texture
 
@@ -174,6 +201,16 @@ The heart bar creates its children during runtime `NativeConstruct()`, so its De
 
 `NativeConstruct()` can run more than once as a widget's underlying UI is rebuilt. It is not a one-time gameplay initialization hook. `BeginPlay()` initializes the gameplay component; the widgets read that state when constructed.
 
+## Gameplay HUD and inventory visibility
+
+The local player controller subscribes to `OnPossessedPawnChanged` in `BeginPlay()` and also processes its current pawn immediately. `HandleHUDPawnChanged()` removes the previous HUD, then creates the configured `WBP_PlayerHUD` with the controller as its owning player when a pawn is available. This gives its embedded health bar a way to find the pawn's HealthComponent.
+
+The HUD is added to the player screen at Z-order zero. During gameplay it uses `HitTestInvisible` (**Not Hit-Testable: Self & All Children**) so its visuals do not intercept pointer input. Opening the inventory collapses the gameplay HUD; closing the inventory restores it. The collapsed HUD remains subscribed to health changes, so it shows the latest health when gameplay resumes.
+
+In `WBP_PlayerHUD`, the Canvas Panel supplies the viewport layout and a `WBP_HealthBar` child supplies the existing native heart behavior. Configure its anchors and position in Designer; **Size to Content** on its Canvas slot lets the health bar use its desired size. The gameplay and inventory bars are separate widget instances reading the same component.
+
+The controller recreates the HUD when possession changes, but complete respawn behavior, inventory rebinding across pawn replacement, and health persistence still need their own implementation and tests.
+
 ## Open and run the project
 
 The project is associated with **Unreal Engine 5.8** and has been built locally with **5.8.3**, Windows, Visual Studio C++ tools, and a Windows SDK. The checked-in `.vsconfig` records the local Visual Studio component selections. The engine itself is not included.
@@ -198,20 +235,24 @@ For changes to reflected property types, native inheritance, or default subobjec
 
 - Character: inherited CurrencyComponent and HealthComponent are present; check the configured **Max Health**.
 - Input: `IA_Inventory` is assigned to the character's inventory action, and the controller registers the mapping context containing Tab.
-- Controller: **Inventory Widget Class = WBP_Inventory**.
+- Controller: **Inventory Widget Class = WBP_Inventory**, **Player HUD Widget Class = WBP_PlayerHUD**.
 - `WBP_Inventory`: parent **InventoryWidget**, with `MoneyText` and a `WBP_HealthBar` child.
+- Optional inventory test buttons: `DamageTestButton` and `HealTestButton`, with **Is Focusable** disabled.
+- `WBP_PlayerHUD`: parent **UserWidget**, with a Canvas Panel and `WBP_HealthBar` child; configure the child's Canvas slot sizing/anchors and keep the HUD non-hit-testable.
 - `WBP_HealthBar`: parent **HealthBarWidget**, with `HealthBarWrapBox` and **Heart Widget Class = WBP_Heart**.
 - `WBP_Heart`: parent **HeartWidget**, with `HeartImage` and all three texture references assigned.
 - Pickups: select valid rows from `DT_MoneyNative` through **Currency Row**.
 
 ## Verification and remaining work
 
-Development Editor builds have succeeded. Manual Play-in-Editor checks have covered Tab opening/closing, currency collection, generated heart counts, and full/half/empty textures. The partial-heart check temporarily started current health at `2.5f`; normal initialization has been restored to `CurrentHealth = MaxHealth`. There is no automated CI test suite configured yet.
+The November 4, 2026 Development Editor build succeeded. Manual Play-in-Editor checks have covered Tab opening/closing, currency collection, generated heart counts, full/half/empty textures, damage/healing buttons, immediate health updates, and the gameplay HUD displaying the same health after closing the inventory. Normal initialization is `CurrentHealth = MaxHealth`; the buttons now provide a way to test partial health without changing initialization. There is no automated CI test suite configured yet.
+
+To repeat the health check, start Play, confirm the gameplay hearts appear, open the inventory with Tab, and click the damage/heal buttons. Each click should change half a heart, stop at zero or maximum, and update the visible bar immediately. Close the inventory and confirm that the gameplay HUD shows the same health. Repeat opening and closing to check that bars and notifications are not duplicated.
 
 Still to implement:
 
-- Damage and healing operations, death behavior, and health-change notifications.
-- Updating the displayed hearts immediately when health changes while the UI stays open.
+- Gameplay damage sources (such as an enemy), healing items, and death/revival rules.
+- Runtime maximum-health changes and corresponding heart-slot rebuilding.
 - Subscribing the currency text to the existing `OnBalanceChanged` delegate.
 - Item storage, slots, stacking, equipment, and other inventory interactions.
 - Save/load, persistence across character replacement, and multiplayer replication.

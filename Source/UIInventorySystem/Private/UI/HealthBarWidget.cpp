@@ -12,6 +12,13 @@ void UHealthBarWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+	if (IsValid(BoundHealthComponent))
+	{
+		BoundHealthComponent->OnHealthChanged.RemoveDynamic(this, &UHealthBarWidget::HandleHealthChanged);
+	}
+
+	BoundHealthComponent = nullptr;
+
 	if (!HealthBarWrapBox)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("HealthBarWrapBox is not bound in HealthBarWidget."));
@@ -67,4 +74,41 @@ void UHealthBarWidget::NativeConstruct()
 			HealthBarWrapBox->AddChild(HeartWidget);
 		}
 	}
+
+	BoundHealthComponent = HealthComponent;
+	BoundHealthComponent->OnHealthChanged.AddUniqueDynamic(this, &UHealthBarWidget::HandleHealthChanged);
+}
+
+void UHealthBarWidget::HandleHealthChanged(float NewHealth, float MaxHealth)
+{
+	if (!HealthBarWrapBox)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("HealthBarWrapBox is not bound in HealthBarWidget."));
+		return;
+	}
+
+	const float CurrentHealth = FMath::Clamp(NewHealth, 0.0f, MaxHealth);
+
+	for (int32 Index = 0; Index < HealthBarWrapBox->GetChildrenCount(); ++Index)
+	{
+		UHeartWidget* HeartWidget = Cast<UHeartWidget>(HealthBarWrapBox->GetChildAt(Index));
+		if (!HeartWidget)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Child at index %d is not a UHeartWidget in HealthBarWidget."), Index);
+			continue;
+		}
+
+		const float HeartPercent = FMath::Clamp(CurrentHealth - static_cast<float>(Index), 0.0f, 1.0f);
+		HeartWidget->SetPercent(HeartPercent);
+	}
+}
+
+void UHealthBarWidget::NativeDestruct()
+{
+	if (IsValid(BoundHealthComponent))
+	{
+		BoundHealthComponent->OnHealthChanged.RemoveDynamic(this, &UHealthBarWidget::HandleHealthChanged);
+	}
+	BoundHealthComponent = nullptr;
+ 	Super::NativeDestruct();
 }
