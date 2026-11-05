@@ -43,6 +43,7 @@ void UInventoryWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 	bCloseOnTabRelease = false;
+	bCloseOnBRelease = false;
 
 	if (!MoneyText) return;
 
@@ -71,18 +72,24 @@ FReply UInventoryWidget::NativeOnPreviewKeyDown(
 	const FGeometry& InGeometry,
 	const FKeyEvent& InKeyEvent)
 {
-	if (InKeyEvent.GetKey() != EKeys::Tab)
+	const FKey Key = InKeyEvent.GetKey();
+
+	if (Key != EKeys::Tab && Key != EKeys::B)
 	{
 		return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
 	}
-	
-	bool bIsInKeyEventRepeat = InKeyEvent.IsRepeat();
 
-	if (!bIsInKeyEventRepeat)
+	if (!InKeyEvent.IsRepeat())
 	{
-		bCloseOnTabRelease = true;
+		if (Key == EKeys::Tab)
+		{
+			bCloseOnTabRelease = true;
+		}
+		else if (Key == EKeys::B)
+		{
+			bCloseOnBRelease = true;
+		}
 	}
-	
 
 	return FReply::Handled();
 }
@@ -91,25 +98,31 @@ FReply UInventoryWidget::NativeOnKeyUp(
 	const FGeometry& InGeometry,
 	const FKeyEvent& InKeyEvent)
 {
-	if (InKeyEvent.GetKey() != EKeys::Tab)
+	const FKey Key = InKeyEvent.GetKey();
+
+	if (Key != EKeys::Tab && Key != EKeys::B)
 	{
 		return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
 	}
 
-	if (!bCloseOnTabRelease)
+	const bool bShouldClose =
+		(Key == EKeys::Tab && bCloseOnTabRelease) ||
+		(Key == EKeys::B && bCloseOnBRelease);
+
+	if (!bShouldClose)
 	{
 		return FReply::Unhandled();
 	}
-
 	bCloseOnTabRelease = false;
+	bCloseOnBRelease = false;
 
 	AUIInventorySystemPlayerController* PlayerController = Cast<AUIInventorySystemPlayerController>(GetOwningPlayer());
-
 	if (PlayerController)
 	{
 		PlayerController->HideInventory();
 		return FReply::Handled();
 	}
+
 	return FReply::Unhandled();
 }
 

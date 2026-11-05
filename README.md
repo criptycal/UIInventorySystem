@@ -7,6 +7,7 @@ The project began with Unreal's Third Person template while following *Unreal En
 ## What works so far
 
 - Open and close the inventory with **Tab**, including keyboard focus, cursor visibility, and input-mode switching.
+- Close the open inventory with keyboard **B**, using the same controller cleanup as Tab.
 - Collect currency through native pickup overlap handling.
 - Configure pickup denominations and meshes using a data table backed by a C++ row struct.
 - Store currency on the character and display its balance when the inventory widget is constructed.
@@ -17,7 +18,7 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Show the heart bar during gameplay and switch to the inventory's heart bar while it is open.
 - Test damage and healing with temporary inventory buttons, each changing health by half a heart.
 
-The current UI contains the inventory heading, currency display, background blur, and heart bar. Item slots, drag-and-drop, equipment, and other complete inventory features are still future work.
+The current UI contains the inventory heading, currency display, background blur, heart bar, a shared footer, and Adventure Log/System navigation prompts. Only Back has implemented behavior among these prompts; Sort, Select, Rotate, Adventure Log, and System are visual placeholders. Item slots, drag-and-drop, equipment, and other complete inventory features are still future work.
 
 ## How C++ and the editor work together
 
@@ -94,9 +95,34 @@ IA_Inventory / Tab
 
 [The controller](Source/UIInventorySystem/UIInventorySystemPlayerController.cpp) creates the inventory widget with an owning player and reuses it. Opening adds it to the player screen, shows the cursor, suppresses look input, and focuses the widget using UI-only input. Closing removes it and restores game-only input and look control.
 
-Once UI-only input is active, [InventoryWidget.cpp](Source/UIInventorySystem/Private/UI/InventoryWidget.cpp) handles Tab itself. A fresh key-down arms closing; key-up performs the close. This avoids returning control to gameplay while the closing Tab key is still held. The initial opening release does not close the inventory because it has not armed that flag.
+Once UI-only input is active, [InventoryWidget.cpp](Source/UIInventorySystem/Private/UI/InventoryWidget.cpp) handles **Tab and B** through `NativeOnPreviewKeyDown()` and `NativeOnKeyUp()`. A fresh key-down arms that key's closing flag; releasing the matching key calls the controller's `HideInventory()`. Repeated key-down events are consumed without arming a new close request. Both flags reset in `NativeConstruct()` and before closing. The initial opening Tab release does not close the inventory because it has not armed its flag. B only closes an open inventory; it does not open it during gameplay.
 
-`NativeConstruct()` reads `GetOwningPlayerPawn()`, finds its CurrencyComponent, and writes the balance to `MoneyText` with `FText::AsNumber`. Currency changes are currently refreshed through widget construction; the text is not yet subscribed to the component's change event. The former close-button handler is retained as commented code; Tab is the active close control.
+Enhanced Input handles the gameplay inventory action. The focused widget receives these UI keyboard events directly, so B does not require another Input Action or Mapping Context. These UI keys are currently hardcoded as `EKeys::Tab` and `EKeys::B`; the controller-style icons do not imply gamepad support or configurable key bindings.
+
+`NativeConstruct()` reads `GetOwningPlayerPawn()`, finds its CurrencyComponent, and writes the balance to `MoneyText` with `FText::AsNumber`. Currency changes are currently refreshed through widget construction; the text is not yet subscribed to the component's change event. The former close-button handler is retained as commented code; Tab and B are the active close controls.
+
+### Footer and header prompts
+
+`WBP_Inventory` supplies the visual prompt hierarchy in UMG Designer. These are groups of Text Blocks and Images, not clickable Buttons, and require no native `BindWidget` properties or Blueprint graph logic.
+
+```text
+Canvas Panel
+  FooterPrompts (Horizontal Box)
+    SortPrompt    -> Sort + Y icon
+    BackPrompt    -> Back + B icon
+    SelectPrompt  -> Select + A icon
+    RotatePrompt  -> Rotate + R icon
+  AdventureLogSizeBox
+    AdventureLogVerticalBox -> L icon above Adventure Log
+  SystemGuideSizeBox
+    Vertical Box -> R icon above System
+```
+
+The footer is anchored bottom-right, aligned `(1, 1)`, positioned at `(-60, -30)`, and uses **Size to Content**. Prompt slots use Auto sizing and vertical centering. Each icon has 8 units of left padding; each group except Rotate has 32 units of right padding. The footer uses **Not Hit-Testable (Self & All Children)** so its hints do not intercept pointer input.
+
+Adventure Log and System use top-center anchors and alignment `(0.5, 0.5)`, with positions `(-250, 125)` and `(250, 125)`. Adventure Log has a 200-unit width to accommodate its longer label, a 32-by-32 L icon, and the same italic font styling as System. The currency box uses a top-right anchor, alignment `(1, 0)`, and position `(-60, 56)` to separate it from System. These offsets establish the current layout; narrow windows still need visual checks for overlap.
+
+The controller-style icons currently follow the visual reference. Sort and Select need item storage and selection behavior, Rotate needs a character preview, and the header prompts need destination screens before their actions can be implemented in C++.
 
 ## Currency pickups and data tables
 
@@ -247,6 +273,8 @@ For changes to reflected property types, native inheritance, or default subobjec
 
 The November 4, 2026 Development Editor build succeeded. Manual Play-in-Editor checks have covered Tab opening/closing, currency collection, generated heart counts, full/half/empty textures, damage/healing buttons, immediate health updates, and the gameplay HUD displaying the same health after closing the inventory. Normal initialization is `CurrentHealth = MaxHealth`; the buttons now provide a way to test partial health without changing initialization. There is no automated CI test suite configured yet.
 
+Keyboard B closing and the Back prompt were also confirmed working in Play. The footer hierarchy, spacing, textures, and visibility were inspected in the editor. On November 5, the Adventure Log prompt was added, `WBP_Inventory` compiled and saved successfully, and its placement was checked in Designer. This was a widget compilation, not a new full C++ build or a complete viewport-size test.
+
 To repeat the health check, start Play, confirm the gameplay hearts appear, open the inventory with Tab, and click the damage/heal buttons. Each click should change half a heart, stop at zero or maximum, and update the visible bar immediately. Close the inventory and confirm that the gameplay HUD shows the same health. Repeat opening and closing to check that bars and notifications are not duplicated.
 
 Still to implement:
@@ -255,6 +283,8 @@ Still to implement:
 - Runtime maximum-health changes and corresponding heart-slot rebuilding.
 - Subscribing the currency text to the existing `OnBalanceChanged` delegate.
 - Item storage, slots, stacking, equipment, and other inventory interactions.
+- Sort/Select actions, a rotatable character preview, and Adventure Log/System screens with C++ navigation.
+- Configurable UI key bindings and gamepad input, with prompts matching the active controls.
 - Save/load, persistence across character replacement, and multiplayer replication.
 
 Health and currency currently belong to character components and are not persistent saved player data.

@@ -37,6 +37,8 @@ protected:
 private:
 	bool bCloseOnTabRelease = false;
 
+	bool bCloseOnBRelease = false;
+
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> MoneyText;
 
