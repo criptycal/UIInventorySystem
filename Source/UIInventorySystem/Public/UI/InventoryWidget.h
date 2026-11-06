@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Inventory/Data/ItemCategory.h"
 #include "InventoryWidget.generated.h"
 
 /**
@@ -12,6 +13,7 @@
 
 class UButton;
 class UTextBlock;
+class UImage;
 
 UCLASS()
 class UIINVENTORYSYSTEM_API UInventoryWidget : public UUserWidget
@@ -53,6 +55,44 @@ private:
 
 	UFUNCTION()
 	void HandleHealTestButtonClicked();
+
+	EItemCategory CurrentCategory = EItemCategory::Weapon;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UTextBlock> CategoryTitle;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> WeaponsFilterButton;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> ShieldsFilterButton;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> FoodFilterButton;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UImage> WeaponsFilterIcon;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UImage> ShieldsFilterIcon;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UImage> FoodFilterIcon;
+
+	UFUNCTION()
+	void HandleWeaponsFilterClicked();
+
+	UFUNCTION()
+	void HandleShieldsFilterClicked();
+
+	UFUNCTION()
+	void HandleFoodFilterClicked();
+
+	void SelectCategory(EItemCategory NewCategory);
+
+	UFUNCTION()
+	void UpdateCategoryVisuals();
+
 
 
 

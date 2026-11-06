@@ -16,7 +16,8 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Display full, half, and empty heart textures.
 - Apply damage and healing through the HealthComponent, with immediate heart updates.
 - Show the heart bar during gameplay and switch to the inventory's heart bar while it is open.
-- Test damage and healing with temporary inventory buttons, each changing health by half a heart.
+- Select Weapons, Shields, or Food categories, with a matching title, selection highlight, and mouse-hover feedback.
+- Retain temporary damage/healing buttons, each changing health by half a heart; their parent is currently collapsed to hide them.
 
 The current UI contains the inventory heading, currency display, background blur, heart bar, a shared footer, and Adventure Log/System navigation prompts. Only Back has implemented behavior among these prompts; Sort, Select, Rotate, Adventure Log, and System are visual placeholders. Item slots, drag-and-drop, equipment, and other complete inventory features are still future work.
 
@@ -32,7 +33,7 @@ A native class defines behavior and exposes selected properties to Unreal. A Blu
 | `UHealthComponent` | Inherited component on the character | Owns maximum/current health, validates damage/healing, initializes full health, and broadcasts changes. |
 | `AMoneyPickup` | `BP_Money` and its placed instances | Creates collision/mesh components, reads a currency row, and handles collection. |
 | `FMoneyRow` | `DT_MoneyNative` | Defines each row's display name, amount, and mesh. |
-| `UInventoryWidget` | Parent of `WBP_Inventory` | Handles UI keyboard input, updates currency text, and forwards test-button clicks to the HealthComponent. |
+| `UInventoryWidget` | Parent of `WBP_Inventory` | Handles UI keyboard input, currency text, category selection and hover visuals, and health test-button clicks. |
 | `UHealthBarWidget` | Parent of `WBP_HealthBar` | Creates heart widgets, subscribes to health changes, updates their fill, and removes its subscription during destruction. |
 | `UHeartWidget` | Parent of `WBP_Heart` | Chooses the texture for one heart. |
 
@@ -54,6 +55,9 @@ That is why they appear as inherited components in `BP_ThirdPersonCharacter`. Th
 | Widget Blueprint | Required Designer name | Type |
 | --- | --- | --- |
 | `WBP_Inventory` | `MoneyText` | Text Block |
+| `WBP_Inventory` | `CategoryTitle` | Text Block |
+| `WBP_Inventory` | `WeaponsFilterButton`, `ShieldsFilterButton`, `FoodFilterButton` | Button |
+| `WBP_Inventory` | `WeaponsFilterIcon`, `ShieldsFilterIcon`, `FoodFilterIcon` | Image |
 | `WBP_HealthBar` | `HealthBarWrapBox` | Wrap Box |
 | `WBP_Heart` | `HeartImage` | Image |
 
@@ -123,6 +127,30 @@ The footer is anchored bottom-right, aligned `(1, 1)`, positioned at `(-60, -30)
 Adventure Log and System use top-center anchors and alignment `(0.5, 0.5)`, with positions `(-250, 125)` and `(250, 125)`. Adventure Log has a 200-unit width to accommodate its longer label, a 32-by-32 L icon, and the same italic font styling as System. The currency box uses a top-right anchor, alignment `(1, 0)`, and position `(-60, 56)` to separate it from System. These offsets establish the current layout; narrow windows still need visual checks for overlap.
 
 The controller-style icons currently follow the visual reference. Sort and Select need item storage and selection behavior, Rotate needs a character preview, and the header prompts need destination screens before their actions can be implemented in C++.
+
+### Category selection and hover feedback
+
+[ItemCategory.h](Source/UIInventorySystem/Public/Inventory/Data/ItemCategory.h) defines `EItemCategory` with `Weapon`, `Shields`, and `Food`. These are the three categories currently included in this project.
+
+`NativeOnInitialized()` binds the category buttons' click, hover, and unhover events. Clicking calls `SelectCategory()`, which validates the category, stores `CurrentCategory`, updates the localized title, and calls `UpdateCategoryVisuals()`. Hover events call only `UpdateCategoryVisuals()`, so moving the mouse does not change the selected category.
+
+The appearance function uses a local lambda to apply the same rules to each icon: selected opacity is `1.0`, hovered but unselected opacity is `0.7`, and idle opacity is `0.4`. Selection takes priority over hover. These updates are event-driven and do not require Tick. `NativeConstruct()` refreshes the current selection when the cached inventory widget is reopened.
+
+The Designer supplies this layout:
+
+```text
+CategorySection (Vertical Box)
+  CategoryTitle
+  CategoryButtons (Horizontal Box)
+    Size Box -> WeaponsFilterButton -> WeaponsFilterIcon
+    Size Box -> ShieldsFilterButton -> ShieldsFilterIcon
+    Size Box -> FoodFilterButton -> FoodFilterIcon
+  CategoryDividerSizeBox -> CategoryDivider (Border)
+```
+
+Buttons are non-focusable and their background brushes use No Draw Type, leaving the icons as their visible content. The divider uses a 600-by-1 Size Box, an Auto slot with 8 units of top padding, and a white Border at alpha `0.25` with zero content padding. The divider group is not hit-testable. This currently implements category selection and visual feedback; filtering an item collection will follow when item storage and a grid exist.
+
+The health test buttons remain inside `HorizontalBox_108`, whose visibility is **Collapsed**. To use them again, set that parent to **Not Hit-Testable (Self Only)**, compile and save the widget, and start a fresh Play session. Their existing C++ handlers remain available.
 
 ## Currency pickups and data tables
 
@@ -262,7 +290,7 @@ For changes to reflected property types, native inheritance, or default subobjec
 - Character: inherited CurrencyComponent and HealthComponent are present; check the configured **Max Health**.
 - Input: `IA_Inventory` is assigned to the character's inventory action, and the controller registers the mapping context containing Tab.
 - Controller: **Inventory Widget Class = WBP_Inventory**, **Player HUD Widget Class = WBP_PlayerHUD**.
-- `WBP_Inventory`: parent **InventoryWidget**, with `MoneyText` and a `WBP_HealthBar` child.
+- `WBP_Inventory`: parent **InventoryWidget**, with `MoneyText`, a `WBP_HealthBar` child, and the required category bindings listed above.
 - Optional inventory test buttons: `DamageTestButton` and `HealTestButton`, with **Is Focusable** disabled.
 - `WBP_PlayerHUD`: parent **UserWidget**, with a Canvas Panel and `WBP_HealthBar` child; configure the child's Canvas slot sizing/anchors and keep the HUD non-hit-testable.
 - `WBP_HealthBar`: parent **HealthBarWidget**, with `HealthBarWrapBox` and **Heart Widget Class = WBP_Heart**.
@@ -275,7 +303,9 @@ The November 4, 2026 Development Editor build succeeded. Manual Play-in-Editor c
 
 Keyboard B closing and the Back prompt were also confirmed working in Play. The footer hierarchy, spacing, textures, and visibility were inspected in the editor. On November 5, the Adventure Log prompt was added, `WBP_Inventory` compiled and saved successfully, and its placement was checked in Designer. This was a widget compilation, not a new full C++ build or a complete viewport-size test.
 
-To repeat the health check, start Play, confirm the gameplay hearts appear, open the inventory with Tab, and click the damage/heal buttons. Each click should change half a heart, stop at zero or maximum, and update the visible bar immediately. Close the inventory and confirm that the gameplay HUD shows the same health. Repeat opening and closing to check that bars and notifications are not duplicated.
+The category code has been reviewed, and the divider hierarchy, padding, dimensions, tint, and visibility have been inspected in the editor. This review does not establish a new full C++ build or automated runtime test result. To verify the category behavior in Play, hover each unselected icon, move away, select another category, and reopen the inventory. Check that the title follows clicks, selected icons stay bright, and hover alone never changes selection.
+
+To repeat the health check, first restore the test-button parent's visibility as described above. Start Play, confirm the gameplay hearts appear, open the inventory with Tab, and click the damage/heal buttons. Each click should change half a heart, stop at zero or maximum, and update the visible bar immediately. Close the inventory and confirm that the gameplay HUD shows the same health. Repeat opening and closing to check that bars and notifications are not duplicated.
 
 Still to implement:
 
@@ -295,7 +325,7 @@ Health and currency currently belong to character components and are not persist
 Source/UIInventorySystem/
   Public/Inventory/Components/   CurrencyComponent and HealthComponent headers
   Private/Inventory/Components/  Component implementations
-  Public/Inventory/Data/         FMoneyRow
+  Public/Inventory/Data/         FMoneyRow and EItemCategory
   Public/Inventory/Pickups/      MoneyPickup header
   Private/Inventory/Pickups/     Pickup implementation
   Public/UI/                    InventoryWidget, HealthBarWidget, HeartWidget

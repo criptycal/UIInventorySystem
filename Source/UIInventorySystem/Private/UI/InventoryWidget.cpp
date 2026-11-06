@@ -10,6 +10,7 @@
 #include "GameFramework/Pawn.h"
 #include "Inventory/Components/CurrencyComponent.h"
 #include "Inventory/Components/HealthComponent.h"
+#include "Components/Image.h"
 
 
 void UInventoryWidget::NativeOnInitialized()
@@ -36,6 +37,31 @@ void UInventoryWidget::NativeOnInitialized()
 	// 	Button_0->OnClicked.AddDynamic(this, &UInventoryWidget::HandleCloseButtonClicked);
 	// }
 
+	if (WeaponsFilterButton)
+	{
+		WeaponsFilterButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleWeaponsFilterClicked);
+	}
+
+	if (ShieldsFilterButton)
+	{
+		ShieldsFilterButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleShieldsFilterClicked);
+	}
+
+	if (FoodFilterButton)
+	{
+		FoodFilterButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleFoodFilterClicked);
+	}
+
+	UButton* CategoryButtons[] = { WeaponsFilterButton, ShieldsFilterButton, FoodFilterButton };
+
+	for (UButton* Button : CategoryButtons)
+	{
+		if (Button)
+		{
+			Button->OnHovered.AddDynamic(this, &UInventoryWidget::UpdateCategoryVisuals);
+			Button->OnUnhovered.AddDynamic(this, &UInventoryWidget::UpdateCategoryVisuals);
+		}
+	}
 
 }
 
@@ -44,6 +70,8 @@ void UInventoryWidget::NativeConstruct()
 	Super::NativeConstruct();
 	bCloseOnTabRelease = false;
 	bCloseOnBRelease = false;
+
+	SelectCategory(CurrentCategory);
 
 	if (!MoneyText) return;
 
@@ -152,6 +180,73 @@ void UInventoryWidget::HandleHealTestButtonClicked()
 	}
 }
 
+void UInventoryWidget::HandleWeaponsFilterClicked()
+{
+	SelectCategory(EItemCategory::Weapon);
+}
+
+void UInventoryWidget::HandleShieldsFilterClicked()
+{
+	SelectCategory(EItemCategory::Shields);
+}
+
+void UInventoryWidget::HandleFoodFilterClicked()
+{
+	SelectCategory(EItemCategory::Food);
+}
+
+void UInventoryWidget::SelectCategory(EItemCategory NewCategory)
+{
+	FText NewTitle;
+
+	switch (NewCategory)
+	{
+	case EItemCategory::Weapon:
+		NewTitle = NSLOCTEXT("Inventory", "WeaponsCategory", "Weapons");
+		break;
+	case EItemCategory::Shields:
+		NewTitle = NSLOCTEXT("Inventory", "ShieldsCategory", "Shields");
+		break;
+	case EItemCategory::Food:
+		NewTitle = NSLOCTEXT("Inventory", "FoodCategory", "Food");
+		break;
+	default:
+		UE_LOG(LogTemp, Warning, TEXT("Invalid inventory category selected."));
+		return;
+	}
+	CurrentCategory = NewCategory;
+
+	if (CategoryTitle)
+	{
+		CategoryTitle->SetText(NewTitle);
+	}
+
+	UpdateCategoryVisuals();
+}
+
+void UInventoryWidget::UpdateCategoryVisuals()
+{
+	const auto UpdateIcon = [this](UImage* Icon, UButton* Button, EItemCategory Category)
+		{
+			if (!Icon) return;
+
+			float Opacity = 0.4f;
+
+			if (CurrentCategory == Category)
+			{
+				Opacity = 1.0f;
+			}
+			else if (Button && Button->IsHovered())
+			{
+				Opacity = 0.7f;
+			}
+			Icon->SetColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Opacity));
+		};
+	UpdateIcon(WeaponsFilterIcon, WeaponsFilterButton, EItemCategory::Weapon);
+	UpdateIcon(ShieldsFilterIcon, ShieldsFilterButton, EItemCategory::Shields);
+	UpdateIcon(FoodFilterIcon, FoodFilterButton, EItemCategory::Food);
+
+}
 
 // void UInventoryWidget::HandleCloseButtonClicked()
 // {
