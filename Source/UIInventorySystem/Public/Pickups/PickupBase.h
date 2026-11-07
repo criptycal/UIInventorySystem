@@ -18,6 +18,8 @@ public:
 	// Sets default values for this actor's properties
 	APickupBase();
 
+	virtual void Tick(float DeltaTime) override;
+
 protected:
 	void InitializePickupComponents(FName CollisionComponentName);
 
@@ -31,8 +33,23 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Pickup")
 	TObjectPtr<UStaticMeshComponent> PickupMesh;
 
+	virtual void BeginPlay() override;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Animation")
+	float RotationSpeed = 90.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Animation",
+		meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float BobHeight = 15.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Animation",
+		meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float BobFrequency = 0.5f;
+
 private:
 	bool bCollected = false;
 
+	FVector InitialMeshLocation = FVector::ZeroVector;
+	float BobPhase = 0.f;
 
 };

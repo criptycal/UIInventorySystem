@@ -10,7 +10,7 @@
 APickupBase::APickupBase()
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
 }
 
@@ -50,4 +50,34 @@ void APickupBase::NotifyActorBeginOverlap(AActor* OtherActor)
 bool APickupBase::TryCollect(AActor* Collector)
 {
 	return false;
+}
+
+void APickupBase::BeginPlay()
+{
+	Super::BeginPlay();
+	if (PickupMesh)
+	{
+		InitialMeshLocation = PickupMesh->GetRelativeLocation();
+	}
+}
+
+void APickupBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	if (!PickupMesh) return;
+
+	// Rotate around the parent component's Z axis
+	PickupMesh->AddRelativeRotation(FRotator(0.f, RotationSpeed * DeltaTime, 0.f));
+
+	// Advance through a sine cycle, measured in radians
+	const float FullCycle = 2.f * PI;
+
+	BobPhase = FMath::Fmod(BobPhase + (FullCycle * BobFrequency * DeltaTime), FullCycle);
+
+	const float HeightOffset = BobHeight * FMath::Sin(BobPhase);
+
+	FVector NewLocation = InitialMeshLocation;
+	NewLocation.Z += HeightOffset;
+
+	PickupMesh->SetRelativeLocation(NewLocation);
 }
