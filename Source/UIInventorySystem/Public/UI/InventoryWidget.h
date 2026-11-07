@@ -14,6 +14,9 @@
 class UButton;
 class UTextBlock;
 class UImage;
+class UWrapBox;
+class UItemSlotWidget;
+
 
 UCLASS()
 class UIINVENTORYSYSTEM_API UInventoryWidget : public UUserWidget
@@ -93,7 +96,13 @@ private:
 	UFUNCTION()
 	void UpdateCategoryVisuals();
 
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UWrapBox> ItemGrid;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
+	TSubclassOf<UItemSlotWidget> ItemSlotClass;
+
+	void RebuildItemGrid();
 
 
 	// Close button support is kept here for later reuse; Tab handles closing.

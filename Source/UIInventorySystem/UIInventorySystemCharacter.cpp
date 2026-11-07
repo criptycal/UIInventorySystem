@@ -14,6 +14,8 @@
 #include "UIInventorySystemPlayerController.h"
 #include "Inventory/Components/CurrencyComponent.h"
 #include "Inventory/Components/HealthComponent.h"
+#include "Inventory/Components/InventoryComponent.h"
+
 
 
 
@@ -54,6 +56,9 @@ AUIInventorySystemCharacter::AUIInventorySystemCharacter()
 	CurrencyComponent = CreateDefaultSubobject<UCurrencyComponent>(TEXT("CurrencyComponent"));
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 
+	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
+
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -66,6 +71,11 @@ UCurrencyComponent* AUIInventorySystemCharacter::GetCurrencyComponent() const
 UHealthComponent* AUIInventorySystemCharacter::GetHealthComponent() const
 {
 	return HealthComponent;
+}
+
+UInventoryComponent* AUIInventorySystemCharacter::GetInventoryComponent() const
+{
+	return InventoryComponent;
 }
 
 void AUIInventorySystemCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

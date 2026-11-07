@@ -11,6 +11,11 @@
 #include "Inventory/Components/CurrencyComponent.h"
 #include "Inventory/Components/HealthComponent.h"
 #include "Components/Image.h"
+#include "Components/WrapBox.h"
+#include "UI/ItemSlotWidget.h"
+#include "Inventory/Components/InventoryComponent.h"
+#include "Inventory/Data/ItemRow.h"
+#include "UIInventorySystem.h"
 
 
 void UInventoryWidget::NativeOnInitialized()
@@ -222,6 +227,7 @@ void UInventoryWidget::SelectCategory(EItemCategory NewCategory)
 	}
 
 	UpdateCategoryVisuals();
+	RebuildItemGrid();
 }
 
 void UInventoryWidget::UpdateCategoryVisuals()
@@ -246,6 +252,72 @@ void UInventoryWidget::UpdateCategoryVisuals()
 	UpdateIcon(ShieldsFilterIcon, ShieldsFilterButton, EItemCategory::Shields);
 	UpdateIcon(FoodFilterIcon, FoodFilterButton, EItemCategory::Food);
 
+}
+
+void UInventoryWidget::RebuildItemGrid()
+{
+	if (!ItemGrid)
+	{
+		return;
+	}
+
+	ItemGrid->ClearChildren();
+
+	if (!ItemSlotClass)
+	{
+		UE_LOG(LogUIInventorySystem, Warning,
+			TEXT("Cannot display inventory: ItemSlotClass is not assigned."));
+		return;
+	}
+
+	APawn* PlayerPawn = GetOwningPlayerPawn();
+
+	if (!PlayerPawn)
+	{
+		return;
+	}
+
+	UInventoryComponent* Inventory =
+		PlayerPawn->FindComponentByClass<UInventoryComponent>();
+
+	if (!Inventory)
+	{
+		UE_LOG(LogUIInventorySystem, Warning,
+			TEXT("Cannot display inventory: owning pawn has no InventoryComponent."));
+		return;
+	}
+
+	for (const FInventoryEntry& Entry : Inventory->GetEntries())
+	{
+		if (Entry.Quantity <= 0)
+		{
+			continue;
+		}
+
+		const FItemRow* Definition =
+			Inventory->FindItemDefinition(Entry.ItemRowName);
+
+		if (!Definition || Definition->Category != CurrentCategory)
+		{
+			continue;
+		}
+
+		UItemSlotWidget* SlotWidget =
+			CreateWidget<UItemSlotWidget>(
+				GetOwningPlayer(),
+				ItemSlotClass);
+
+		if (!SlotWidget)
+		{
+			continue;
+		}
+
+		SlotWidget->SetItemDisplay(
+			Definition->Icon.Get(),
+			Entry.Quantity);
+
+		ItemGrid->AddChildToWrapBox(SlotWidget);
+	}
 }
 
 // void UInventoryWidget::HandleCloseButtonClicked()

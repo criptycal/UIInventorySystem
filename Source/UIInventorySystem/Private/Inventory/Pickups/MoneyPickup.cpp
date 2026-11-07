@@ -2,53 +2,15 @@
 
 
 #include "Inventory/Pickups/MoneyPickup.h"
-#include "Components/SphereComponent.h"
 #include "Inventory/Components/CurrencyComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Inventory/Data/MoneyRow.h"
+#include "UIInventorySystem.h"
 
 // Sets default values
 AMoneyPickup::AMoneyPickup()
 {
-	PrimaryActorTick.bCanEverTick = false;
-
-	PickupSphere = CreateDefaultSubobject<USphereComponent>(TEXT("PickupCollision"));
-	SetRootComponent(PickupSphere);
-	PickupSphere->InitSphereRadius(75.0f);
-	PickupSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	PickupSphere->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
-	PickupSphere->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Overlap);
-	PickupSphere->SetGenerateOverlapEvents(true);
-
-	PickupMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PickupMesh"));
-	PickupMesh->SetupAttachment(PickupSphere);
-	PickupMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	PickupMesh->SetGenerateOverlapEvents(false);
-
-}
-
-void AMoneyPickup::NotifyActorBeginOverlap(AActor* OtherActor)
-{
-	Super::NotifyActorBeginOverlap(OtherActor);
-
-	if (bCollected || !IsValid(OtherActor) || OtherActor == this) return;
-	UE_LOG(LogTemp, Warning, TEXT("Money Pickup Overlapped with: %s"), *GetNameSafe(OtherActor));
-
-	UCurrencyComponent* CurrencyComp = OtherActor->FindComponentByClass<UCurrencyComponent>();
-	if (!CurrencyComp) return;
-	bCollected = true;
-	
-	if (!CurrencyComp->TryAddCurrency(CurrencyAmount))
-	{
-		bCollected = false;
-		UE_LOG(LogTemp, Warning, TEXT("Failed to add currency to %s"), *GetNameSafe(OtherActor));
-		return;
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Added %d currency to %s"), CurrencyAmount, *GetNameSafe(OtherActor));
-
-	SetActorEnableCollision(false);
-	Destroy();
+	InitializePickupComponents(TEXT("PickupCollision"));
 }
 
 void AMoneyPickup::OnConstruction(const FTransform& Transform)
@@ -62,7 +24,7 @@ void AMoneyPickup::OnConstruction(const FTransform& Transform)
 
 	if (CurrencyRow.DataTable->GetRowStruct() != FMoneyRow::StaticStruct())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("CurrencyRow is not of type FMoneyRow"));
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("CurrencyRow is not of type FMoneyRow"));
 		return;
 	}
 
@@ -72,11 +34,32 @@ void AMoneyPickup::OnConstruction(const FTransform& Transform)
 
 	if (MoneyRow->Amount <= 0 || !IsValid(MoneyRow->Mesh.Get()))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Currency MoneyRow needs a positive amount and a mesh %s"), *GetNameSafe(this));
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("Currency MoneyRow needs a positive amount and a mesh %s"), *GetNameSafe(this));
 		return;
 	}
 	PickupMesh->SetStaticMesh(MoneyRow->Mesh.Get());
 	CurrencyAmount = MoneyRow->Amount;
+}
+
+bool AMoneyPickup::TryCollect(AActor* Collector)
+{
+	UCurrencyComponent* Currency = Collector->FindComponentByClass<UCurrencyComponent>();
+
+	if(!Currency)
+	{
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("Collector %s has no currency component"), *GetNameSafe(Collector));
+		return false;
+	}
+
+	if (!Currency->TryAddCurrency(CurrencyAmount))
+	{
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("Collector %s could not add currency"), *GetNameSafe(Collector));
+		return false;
+	}
+
+	UE_LOG(LogUIInventorySystem, Log, TEXT("Collector %s collected %d currency"), *GetNameSafe(Collector), CurrencyAmount);
+
+	return true;
 }
 
 

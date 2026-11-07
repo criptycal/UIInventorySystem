@@ -13,6 +13,7 @@ class UInputAction;
 struct FInputActionValue;
 class UCurrencyComponent;
 class UHealthComponent;
+class UInventoryComponent;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -35,6 +36,10 @@ class AUIInventorySystemCharacter : public ACharacter
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Currency", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCurrencyComponent> CurrencyComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInventoryComponent> InventoryComponent;
+
 protected:
 
 	/** Jump Input Action */
@@ -69,6 +74,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Health")
 	UHealthComponent* GetHealthComponent() const;
+
+	UFUNCTION(BlueprintPure, Category = "Inventory")
+	UInventoryComponent* GetInventoryComponent() const;
 
 protected:
 
