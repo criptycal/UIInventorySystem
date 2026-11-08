@@ -210,9 +210,9 @@ The interaction component traces from the camera each frame, checks the candidat
 
 `M_ItemOutline` is a Post Process material at Scene Color After Tonemapping. The project enables Custom Depth with Stencil (`r.CustomDepth=3`). Item meshes use stencil ID 1 and write Custom Depth only while focused. The material compares four neighboring stencil samples to form an inner border, then compares CustomDepth against SceneDepth with a small tolerance to suppress covered pixels. Its Custom expression is HLSL shader code; C++ controls focus and mesh flags.
 
-In `BP_ThirdPersonCharacter` Class Defaults, assign `IA_PickupInteract` to **Interact Action** and `M_ItemOutline` to **Item Outline Material**. The character's native `BeginPlay()` adds the assigned material to `FollowCamera`. No Blueprint graph logic or post-process volume is required. A missing material produces a warning.
+In `BP_ThirdPersonCharacter` Class Defaults, assign `IA_PickupInteract` to **Interact Action** and `M_ItemOutline` to **Item Outline Material**. The character's native `BeginPlay()` subscribes to focus changes and synchronizes the current target. `HandleOutlineFocusChanged()` adds the material to `FollowCamera` when an item is focused and removes it when focus clears. `EndPlay()` removes the subscription and effect. No Blueprint graph logic or post-process volume is required. A missing material produces a warning.
 
-Performance follow-up: the camera currently keeps the outline pass active even without a focused item. Disabling that pass when idle and comparing GPU timings at fixed resolution are planned work; no performance measurements have been established yet.
+The outline post-process material is removed from the camera while no item is focused, avoiding its fullscreen pass during idle gameplay. Focus detection still runs each frame, and highlighting still has a rendering cost while active. Comparing GPU timings at fixed resolution remains planned work; no performance measurements have been established yet.
 
 ## Health is measured directly in hearts
 
@@ -340,7 +340,7 @@ For changes to reflected property types, native inheritance, or default subobjec
 
 ## Verification and remaining work
 
-On November 8, 2026, the latest recorded Development Editor build succeeded at 14:13 local time, after the camera-material changes. The user confirmed manual pickup, automatic currency pickup, and the focus-driven prompt during Play. Later runtime logs record successful food and weapon pickups. The outline graph, stencil configuration, and character material assignment were inspected through the editor tools; these checks do not substitute for visual occlusion testing or GPU profiling.
+On November 8, 2026, the latest recorded Development Editor build succeeded at 15:52 local time, after adding event-driven outline activation and cleanup. The user confirmed the optimization working in Play, following earlier checks of manual pickup, automatic currency pickup, and the focus-driven prompt. Runtime logs also record successful food and weapon pickups. The outline graph, stencil configuration, and character material assignment were inspected through the editor tools. GPU cost has not been measured, and thorough visual occlusion and resolution testing remain follow-up work.
 
 The November 4, 2026 Development Editor build succeeded. Manual Play-in-Editor checks have covered Tab opening/closing, currency collection, generated heart counts, full/half/empty textures, damage/healing buttons, immediate health updates, and the gameplay HUD displaying the same health after closing the inventory. Normal initialization is `CurrentHealth = MaxHealth`; the buttons now provide a way to test partial health without changing initialization. There is no automated CI test suite configured yet.
 
@@ -356,7 +356,7 @@ Still to implement:
 - Runtime maximum-health changes and corresponding heart-slot rebuilding.
 - Subscribing the currency text to the existing `OnBalanceChanged` delegate.
 - Item selection, equipment, consumption, removal, inventory capacity, and live grid-change notifications.
-- Disable the outline post-process pass when idle and profile its GPU cost.
+- Profile the outline's GPU cost at the intended gameplay resolutions.
 - Sort/Select actions, a rotatable character preview, and Adventure Log/System screens with C++ navigation.
 - Configurable UI key bindings and gamepad input, with prompts matching the active controls.
 - Save/load, persistence across character replacement, and multiplayer replication.

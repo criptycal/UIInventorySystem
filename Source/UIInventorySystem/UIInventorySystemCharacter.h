@@ -16,6 +16,7 @@ class UHealthComponent;
 class UInventoryComponent;
 class UInteractionComponent;
 class UMaterialInterface;
+class AItemPickup;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -75,6 +76,11 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction|Visuals")
 	TObjectPtr<UMaterialInterface> ItemOutlineMaterial;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	UFUNCTION()
+	void HandleOutlineFocusChanged(AItemPickup* NewFocusedItem);
 
 public:
 

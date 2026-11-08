@@ -17,6 +17,7 @@
 #include "Inventory/Components/InventoryComponent.h"
 #include "Interaction/Components/InteractionComponent.h"
 #include "Materials/MaterialInterface.h"
+#include "Pickups/ItemPickup.h"
 
 
 
@@ -200,11 +201,46 @@ void AUIInventorySystemCharacter::BeginPlay()
 		return;
 	}
 
-	if (FollowCamera)
+	if (!FollowCamera || !InteractionComponent)
 	{
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("%s: FollowCamera or InteractionComponent is not set. Please ensure both components are properly initialized."), *GetNameSafe(this));
+		return;
+	}
+
 		FollowCamera->SetPostProcessBlendWeight(1.0f);
+		InteractionComponent->OnFocusedItemChanged.AddUniqueDynamic(
+			this, &AUIInventorySystemCharacter::HandleOutlineFocusChanged);
+		HandleOutlineFocusChanged(InteractionComponent->GetFocusedItem());
+}
+
+void AUIInventorySystemCharacter::HandleOutlineFocusChanged(AItemPickup* NewFocusedItem)
+{
+	if (!FollowCamera || !IsValid(ItemOutlineMaterial.Get()))
+	{
+		return;
+	}
+
+	const bool bHasFocusedItem = IsValid(NewFocusedItem) && !NewFocusedItem->IsActorBeingDestroyed();
+	if (bHasFocusedItem)
+	{
 		FollowCamera->AddOrUpdateBlendable(ItemOutlineMaterial.Get(), 1.0f);
 	}
+	else
+	{
+		FollowCamera->RemoveBlendable(ItemOutlineMaterial.Get());
+	}
+}
+
+void AUIInventorySystemCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (IsValid(InteractionComponent.Get()))
+	{
+		InteractionComponent->OnFocusedItemChanged.RemoveDynamic(
+			this, &AUIInventorySystemCharacter::HandleOutlineFocusChanged);
+	}
+
+	HandleOutlineFocusChanged(nullptr); // Clear any outline effect when the character is destroyed or the game ends
+	Super::EndPlay(EndPlayReason);
 }
 
 
