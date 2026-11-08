@@ -20,6 +20,7 @@ public:
 
 	virtual void Tick(float DeltaTime) override;
 
+	bool TryInteract(AActor* Interactor);
 protected:
 	void InitializePickupComponents(FName CollisionComponentName);
 
@@ -45,6 +46,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Animation",
 		meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float BobFrequency = 0.5f;
+
+	bool bCollectOnOverlap = false;
+
 
 private:
 	bool bCollected = false;

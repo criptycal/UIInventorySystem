@@ -9,6 +9,9 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Open and close the inventory with **Tab**, including keyboard focus, cursor visibility, and input-mode switching.
 - Close the open inventory with keyboard **B**, using the same controller cleanup as Tab.
 - Collect currency through native pickup overlap handling.
+- Focus nearby item pickups and press **E** to collect them, with a contextual HUD prompt and white outline.
+- Store item stacks, display their icons and quantities, and filter the inventory grid by category.
+- Rotate and float both item and currency meshes through the shared pickup base.
 - Configure pickup denominations and meshes using a data table backed by a C++ row struct.
 - Store currency on the character and display its balance when the inventory widget is constructed.
 - Store maximum/current health on the character in **heart units**.
@@ -19,7 +22,7 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Select Weapons, Shields, or Food categories, with a matching title, selection highlight, and mouse-hover feedback.
 - Retain temporary damage/healing buttons, each changing health by half a heart; their parent is currently collapsed to hide them.
 
-The current UI contains the inventory heading, currency display, background blur, heart bar, a shared footer, and Adventure Log/System navigation prompts. Only Back has implemented behavior among these prompts; Sort, Select, Rotate, Adventure Log, and System are visual placeholders. Item slots, drag-and-drop, equipment, and other complete inventory features are still future work.
+The current UI contains the inventory heading, currency display, background blur, heart bar, item grid, a shared footer, and Adventure Log/System navigation prompts. Only Back has implemented behavior among these prompts; Sort, Select, Rotate, Adventure Log, and System are visual placeholders. Item selection, drag-and-drop, equipment, and other complete inventory features are still future work.
 
 ## How C++ and the editor work together
 
@@ -27,12 +30,19 @@ A native class defines behavior and exposes selected properties to Unreal. A Blu
 
 | C++ class | Editor connection | Responsibility |
 | --- | --- | --- |
-| `AUIInventorySystemCharacter` | `BP_ThirdPersonCharacter` | Owns the currency and health components; forwards the inventory input request to the controller. |
+| `AUIInventorySystemCharacter` | `BP_ThirdPersonCharacter` | Owns currency, health, inventory, and interaction components; forwards input and adds the outline material to its camera. |
 | `AUIInventorySystemPlayerController` | `BP_ThirdPersonPlayerController` defaults | Registers input mappings; owns the inventory and gameplay HUD; switches visibility, input mode, and cursor state. |
 | `UCurrencyComponent` | Inherited component on the character | Owns the balance and validates additions/spending. |
 | `UHealthComponent` | Inherited component on the character | Owns maximum/current health, validates damage/healing, initializes full health, and broadcasts changes. |
 | `AMoneyPickup` | `BP_Money` and its placed instances | Creates collision/mesh components, reads a currency row, and handles collection. |
 | `FMoneyRow` | `DT_MoneyNative` | Defines each row's display name, amount, and mesh. |
+| `UInventoryComponent` | Inherited component on the character | Stores entries, validates item definitions, fills existing stacks, and creates additional stacks. |
+| `APickupBase` | Abstract parent of item and money pickups | Shares components, rotation/bobbing, collection guards, and successful-pickup destruction. |
+| `AItemPickup` | `BP_ItemPickup` | Reads an item row, supplies its mesh, collects through interaction, and toggles mesh highlighting. |
+| `FItemRow` / `FInventoryEntry` | Item definitions / runtime entries | Separate shared item data from each stack's row name and quantity. |
+| `UInteractionComponent` | Inherited component on the character | Finds a nearby visible item, broadcasts focus changes, and rechecks focus when interacting. |
+| `UInteractionPromptWidget` | Parent of `WBP_InteractionPrompt`, embedded in `WBP_PlayerHUD` | Shows or hides the pickup prompt in response to focus changes. |
+| `UItemSlotWidget` | Parent of `WBP_ItemSlot` | Displays the item icon and a quantity when greater than one. |
 | `UInventoryWidget` | Parent of `WBP_Inventory` | Handles UI keyboard input, currency text, category selection and hover visuals, and health test-button clicks. |
 | `UHealthBarWidget` | Parent of `WBP_HealthBar` | Creates heart widgets, subscribes to health changes, updates their fill, and removes its subscription during destruction. |
 | `UHeartWidget` | Parent of `WBP_Heart` | Chooses the texture for one heart. |
@@ -44,6 +54,8 @@ The [character constructor](Source/UIInventorySystem/UIInventorySystemCharacter.
 ```cpp
 CurrencyComponent = CreateDefaultSubobject<UCurrencyComponent>(TEXT("CurrencyComponent"));
 HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
+InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 ```
 
 That is why they appear as inherited components in `BP_ThirdPersonCharacter`. They already belong to the character; adding another copy through the editor is unnecessary. Each component owns its state, while the UI reads that state.
@@ -60,6 +72,9 @@ That is why they appear as inherited components in `BP_ThirdPersonCharacter`. Th
 | `WBP_Inventory` | `WeaponsFilterIcon`, `ShieldsFilterIcon`, `FoodFilterIcon` | Image |
 | `WBP_HealthBar` | `HealthBarWrapBox` | Wrap Box |
 | `WBP_Heart` | `HeartImage` | Image |
+| `WBP_Inventory` | `ItemGrid` | Wrap Box |
+| `WBP_ItemSlot` | `ItemIcon`, `QuantityText` | Image, Text Block |
+| `WBP_InteractionPrompt` | `PromptContainer` | Border |
 
 For example, this declaration in [HeartWidget.h](Source/UIInventorySystem/Public/UI/HeartWidget.h) refers to the existing Designer image:
 
@@ -126,7 +141,7 @@ The footer is anchored bottom-right, aligned `(1, 1)`, positioned at `(-60, -30)
 
 Adventure Log and System use top-center anchors and alignment `(0.5, 0.5)`, with positions `(-250, 125)` and `(250, 125)`. Adventure Log has a 200-unit width to accommodate its longer label, a 32-by-32 L icon, and the same italic font styling as System. The currency box uses a top-right anchor, alignment `(1, 0)`, and position `(-60, 56)` to separate it from System. These offsets establish the current layout; narrow windows still need visual checks for overlap.
 
-The controller-style icons currently follow the visual reference. Sort and Select need item storage and selection behavior, Rotate needs a character preview, and the header prompts need destination screens before their actions can be implemented in C++.
+The controller-style icons currently follow the visual reference. Sort and Select still need their actions and item selection behavior, Rotate needs a character preview, and the header prompts need destination screens before their actions can be implemented in C++.
 
 ### Category selection and hover feedback
 
@@ -148,7 +163,7 @@ CategorySection (Vertical Box)
   CategoryDividerSizeBox -> CategoryDivider (Border)
 ```
 
-Buttons are non-focusable and their background brushes use No Draw Type, leaving the icons as their visible content. The divider uses a 600-by-1 Size Box, an Auto slot with 8 units of top padding, and a white Border at alpha `0.25` with zero content padding. The divider group is not hit-testable. This currently implements category selection and visual feedback; filtering an item collection will follow when item storage and a grid exist.
+Buttons are non-focusable and their background brushes use No Draw Type, leaving the icons as their visible content. The divider uses a 600-by-1 Size Box, an Auto slot with 8 units of top padding, and a white Border at alpha `0.25` with zero content padding. The divider group is not hit-testable. The item grid is rebuilt when opening the inventory or changing category, using matching entries from the character's InventoryComponent.
 
 The health test buttons remain inside `HorizontalBox_108`, whose visibility is **Collapsed**. To use them again, set that parent to **Not Hit-Testable (Self Only)**, compile and save the widget, and start a fresh Play session. Their existing C++ handlers remain available.
 
@@ -172,6 +187,32 @@ In the editor, `DT_MoneyNative` supplies the rows, and each `BP_Money` instance 
 2. **Overlap:** find a CurrencyComponent on the overlapping actor, guard against duplicate collection, and attempt the addition. Only a successful addition disables collision and destroys the pickup. A failed addition leaves it available.
 
 The sphere collision and static-mesh components are created in C++. The editor supplies the row selection and assets. Legacy `DT_Money` / `S_Money` assets remain in the project; the native pickup implementation uses `FMoneyRow` and `DT_MoneyNative`.
+
+## Item interaction and outline
+
+`FItemRow` holds the display name, description, category, icon, world mesh, maximum stack size, and sort priority. `UInventoryComponent::TryAddItem()` fills compatible stacks before splitting the remaining quantity into new entries. Items with maximum stack size one occupy separate slots. The pickup and inventory must reference the same definitions table.
+
+`APickupBase::TryInteract()` guards against duplicate collection, calls the subclass's `TryCollect()`, and disables collision and destroys the actor only after success. `AMoneyPickup` opts into overlap collection. `AItemPickup` instead blocks the Visibility trace on its sphere and waits for explicit interaction. Both keep the shared mesh rotation and sine-wave bobbing.
+
+The item input and focus flow is:
+
+```text
+IA_PickupInteract / E (Started)
+  -> Character::Interact()
+  -> InteractionComponent::Interact()
+  -> recheck focus -> ItemPickup::TryInteract()
+  -> InventoryComponent::TryAddItem()
+```
+
+The interaction component traces from the camera each frame, checks the candidate's distance from the character, and checks for an obstruction from the character's eyes. Native defaults are a 1000-unit camera trace and 300-unit interaction range. `SetFocusedItem()` disables the previous item's highlight, enables the new one, and broadcasts only when the target changes. It also clears focus after collection and during `EndPlay()`.
+
+`WBP_InteractionPrompt` supplies the E/Pickup layout. Its native parent subscribes to `OnFocusedItemChanged`, synchronizes the initial state, and removes its subscription in `NativeDestruct()`. Its required `PromptContainer` is a Border. `WBP_PlayerHUD` contains this prompt alongside the health bar; the controller collapses the gameplay HUD while the inventory is open.
+
+`M_ItemOutline` is a Post Process material at Scene Color After Tonemapping. The project enables Custom Depth with Stencil (`r.CustomDepth=3`). Item meshes use stencil ID 1 and write Custom Depth only while focused. The material compares four neighboring stencil samples to form an inner border, then compares CustomDepth against SceneDepth with a small tolerance to suppress covered pixels. Its Custom expression is HLSL shader code; C++ controls focus and mesh flags.
+
+In `BP_ThirdPersonCharacter` Class Defaults, assign `IA_PickupInteract` to **Interact Action** and `M_ItemOutline` to **Item Outline Material**. The character's native `BeginPlay()` adds the assigned material to `FollowCamera`. No Blueprint graph logic or post-process volume is required. A missing material produces a warning.
+
+Performance follow-up: the camera currently keeps the outline pass active even without a focused item. Disabling that pass when idle and comparing GPU timings at fixed resolution are planned work; no performance measurements have been established yet.
 
 ## Health is measured directly in hearts
 
@@ -299,6 +340,8 @@ For changes to reflected property types, native inheritance, or default subobjec
 
 ## Verification and remaining work
 
+On November 8, 2026, the latest recorded Development Editor build succeeded at 14:13 local time, after the camera-material changes. The user confirmed manual pickup, automatic currency pickup, and the focus-driven prompt during Play. Later runtime logs record successful food and weapon pickups. The outline graph, stencil configuration, and character material assignment were inspected through the editor tools; these checks do not substitute for visual occlusion testing or GPU profiling.
+
 The November 4, 2026 Development Editor build succeeded. Manual Play-in-Editor checks have covered Tab opening/closing, currency collection, generated heart counts, full/half/empty textures, damage/healing buttons, immediate health updates, and the gameplay HUD displaying the same health after closing the inventory. Normal initialization is `CurrentHealth = MaxHealth`; the buttons now provide a way to test partial health without changing initialization. There is no automated CI test suite configured yet.
 
 Keyboard B closing and the Back prompt were also confirmed working in Play. The footer hierarchy, spacing, textures, and visibility were inspected in the editor. On November 5, the Adventure Log prompt was added, `WBP_Inventory` compiled and saved successfully, and its placement was checked in Designer. This was a widget compilation, not a new full C++ build or a complete viewport-size test.
@@ -312,23 +355,28 @@ Still to implement:
 - Gameplay damage sources (such as an enemy), healing items, and death/revival rules.
 - Runtime maximum-health changes and corresponding heart-slot rebuilding.
 - Subscribing the currency text to the existing `OnBalanceChanged` delegate.
-- Item storage, slots, stacking, equipment, and other inventory interactions.
+- Item selection, equipment, consumption, removal, inventory capacity, and live grid-change notifications.
+- Disable the outline post-process pass when idle and profile its GPU cost.
 - Sort/Select actions, a rotatable character preview, and Adventure Log/System screens with C++ navigation.
 - Configurable UI key bindings and gamepad input, with prompts matching the active controls.
 - Save/load, persistence across character replacement, and multiplayer replication.
 
-Health and currency currently belong to character components and are not persistent saved player data.
+Health, currency, and inventory currently belong to character components and are not persistent saved player data.
 
 ## Repository contents
 
 ```text
 Source/UIInventorySystem/
-  Public/Inventory/Components/   CurrencyComponent and HealthComponent headers
+  Public/Inventory/Components/   CurrencyComponent, HealthComponent, InventoryComponent
   Private/Inventory/Components/  Component implementations
-  Public/Inventory/Data/         FMoneyRow and EItemCategory
+  Public/Inventory/Data/         Money/item definitions, inventory entries, categories
   Public/Inventory/Pickups/      MoneyPickup header
   Private/Inventory/Pickups/     Pickup implementation
-  Public/UI/                    InventoryWidget, HealthBarWidget, HeartWidget
+  Public/Pickups/                PickupBase and ItemPickup headers
+  Private/Pickups/               Shared and item-specific pickup behavior
+  Public/Interaction/Components/ InteractionComponent header
+  Private/Interaction/Components/ Focus detection and interaction
+  Public/UI/                    Inventory, item slot, health, and interaction prompt widgets
   Private/UI/                   Widget implementations
   UIInventorySystemCharacter.*
   UIInventorySystemPlayerController.*

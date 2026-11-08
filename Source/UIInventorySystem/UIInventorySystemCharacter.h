@@ -14,6 +14,8 @@ struct FInputActionValue;
 class UCurrencyComponent;
 class UHealthComponent;
 class UInventoryComponent;
+class UInteractionComponent;
+class UMaterialInterface;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -40,6 +42,9 @@ class AUIInventorySystemCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInventoryComponent> InventoryComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInteractionComponent> InteractionComponent;
+
 protected:
 
 	/** Jump Input Action */
@@ -60,6 +65,16 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* InventoryOpenAction;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> InteractAction;
+
+	void Interact();
+
+	virtual void BeginPlay() override;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Interaction|Visuals")
+	TObjectPtr<UMaterialInterface> ItemOutlineMaterial;
 
 public:
 

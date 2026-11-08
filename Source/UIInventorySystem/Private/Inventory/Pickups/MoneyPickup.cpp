@@ -11,6 +11,7 @@
 AMoneyPickup::AMoneyPickup()
 {
 	InitializePickupComponents(TEXT("PickupCollision"));
+	bCollectOnOverlap = true;
 }
 
 void AMoneyPickup::OnConstruction(const FTransform& Transform)

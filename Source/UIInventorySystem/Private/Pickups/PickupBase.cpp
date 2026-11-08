@@ -34,22 +34,35 @@ void APickupBase::NotifyActorBeginOverlap(AActor* OtherActor)
 {
 	Super::NotifyActorBeginOverlap(OtherActor);
 
-	if (bCollected || !IsValid(OtherActor) || OtherActor == this) return;
-	bCollected = true;
-
-	if (!TryCollect(OtherActor))
+	if (bCollectOnOverlap)
 	{
-		bCollected = false;
-		return;
+		TryInteract(OtherActor);
 	}
-
-	SetActorEnableCollision(false);
-	Destroy();
 }
+
+
 
 bool APickupBase::TryCollect(AActor* Collector)
 {
 	return false;
+}
+
+bool APickupBase::TryInteract(AActor* Interactor)
+{
+	if (bCollected || IsActorBeingDestroyed() || 
+		!IsValid(Interactor) || Interactor == this) return false;
+
+	bCollected = true;
+
+	if (!TryCollect(Interactor))
+	{
+		bCollected = false;
+		return false;
+	}
+	SetActorEnableCollision(false);
+	Destroy();
+
+	return true;
 }
 
 void APickupBase::BeginPlay()
@@ -81,3 +94,5 @@ void APickupBase::Tick(float DeltaTime)
 
 	PickupMesh->SetRelativeLocation(NewLocation);
 }
+
+

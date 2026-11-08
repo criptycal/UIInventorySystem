@@ -15,7 +15,8 @@
 #include "Inventory/Components/CurrencyComponent.h"
 #include "Inventory/Components/HealthComponent.h"
 #include "Inventory/Components/InventoryComponent.h"
-
+#include "Interaction/Components/InteractionComponent.h"
+#include "Materials/MaterialInterface.h"
 
 
 
@@ -58,6 +59,8 @@ AUIInventorySystemCharacter::AUIInventorySystemCharacter()
 
 	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 
+	InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
+
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -81,8 +84,8 @@ UInventoryComponent* AUIInventorySystemCharacter::GetInventoryComponent() const
 void AUIInventorySystemCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) 
+	{
 		// Jumping
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
@@ -98,6 +101,12 @@ void AUIInventorySystemCharacter::SetupPlayerInputComponent(UInputComponent* Pla
 		if (InventoryOpenAction)
 		{
 			EnhancedInputComponent->BindAction(InventoryOpenAction, ETriggerEvent::Triggered, this, &AUIInventorySystemCharacter::OpenInventorySystem);
+		}
+
+		// Interaction
+		if (InteractAction)
+		{
+			EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AUIInventorySystemCharacter::Interact);
 		}
 	}
 	else
@@ -173,5 +182,29 @@ void AUIInventorySystemCharacter::OpenInventorySystem()
 	if (InventoryController) InventoryController->ToggleInventory();
 }
 
+void AUIInventorySystemCharacter::Interact()
+{
+	if (InteractionComponent)
+	{
+		InteractionComponent->Interact();
+	}
+}
+
+void AUIInventorySystemCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (!IsValid(ItemOutlineMaterial.Get()))
+	{
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("%s: ItemOutlineMaterial is not set. Please assign a valid material in the editor."), *GetNameSafe(this));
+		return;
+	}
+
+	if (FollowCamera)
+	{
+		FollowCamera->SetPostProcessBlendWeight(1.0f);
+		FollowCamera->AddOrUpdateBlendable(ItemOutlineMaterial.Get(), 1.0f);
+	}
+}
 
 

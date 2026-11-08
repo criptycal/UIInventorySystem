@@ -15,6 +15,8 @@ class UIINVENTORYSYSTEM_API AItemPickup : public APickupBase
 public:
 	AItemPickup();
 
+	void SetHighlighted(bool bHighlighted);
+
 protected:
 
 	virtual void OnConstruction(const FTransform& Transform) override;

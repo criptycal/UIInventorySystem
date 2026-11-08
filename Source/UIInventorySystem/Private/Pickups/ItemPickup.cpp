@@ -4,11 +4,18 @@
 #include "Inventory/Data/ItemRow.h"
 #include "UIInventorySystem.h"
 #include "Inventory/Components/InventoryComponent.h"
+#include "Components/SphereComponent.h"
 
 // Sets default values
 AItemPickup::AItemPickup()
 {
 	InitializePickupComponents(TEXT("PickupSphere"));
+	
+	// Set default values for the pickup mesh and sphere
+	PickupMesh->SetCustomDepthStencilValue(1);
+	PickupMesh->SetRenderCustomDepth(false);
+	PickupSphere->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+
 }
 
 void AItemPickup::OnConstruction(const FTransform& Transform)
@@ -77,4 +84,12 @@ bool AItemPickup::TryCollect(AActor* Collector)
 		*GetNameSafe(this), *GetNameSafe(Collector), *ItemRow.RowName.ToString(), Quantity);
 
 	return true;
+}
+
+void AItemPickup::SetHighlighted(bool bHighlighted)
+{
+	if (PickupMesh)
+	{
+		PickupMesh->SetRenderCustomDepth(bHighlighted);
+	}
 }
