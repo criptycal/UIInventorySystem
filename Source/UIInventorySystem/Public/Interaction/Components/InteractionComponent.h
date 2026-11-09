@@ -14,7 +14,7 @@ class UIINVENTORYSYSTEM_API UInteractionComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:	
+public:
 	// Sets default values for this component's properties
 	UInteractionComponent();
 
@@ -29,6 +29,8 @@ public:
 	UPROPERTY()
 	FOnFocusedItemChanged OnFocusedItemChanged;
 
+	void CycleFocusedItem(int32 Direction);
+
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
@@ -37,12 +39,17 @@ protected:
 
 private:
 	void UpdateFocus();
-	AItemPickup* FindFocusedItem() const;
+
+	//
+	AItemPickup* FindFocusedItem(
+		TArray<AItemPickup*>* OutCandidates = nullptr // Optional output parameter to receive the list of candidate items
+	) const;
+
 	void SetFocusedItem(AItemPickup* NewItem);
 
 	UPROPERTY(EditAnywhere, Category = "Interaction",
 		meta = (ClampMin = "1.0", UIMin = "1.0"))
-	float InteractionDistance = 400.0f;
+	float InteractionDistance = 200.0f;
 
 	UPROPERTY(EditAnywhere, Category = "Interaction",
 		meta = (ClampMin = "1.0", UIMin = "1.0"))
@@ -50,5 +57,13 @@ private:
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<AItemPickup> FocusedItem;
-		
+
+	TArray<AItemPickup*> GatherNearbyItems() const;
+
+	UPROPERTY(EditAnywhere, Category = "Interaction", meta = (ClampMin = "0.0", ClampMax = "0.25"))
+	float FocusRadiusScreenFraction = 0.06f;
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<AItemPickup> ManuallySelectedItem;
+
 };

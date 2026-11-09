@@ -65,6 +65,11 @@ bool APickupBase::TryInteract(AActor* Interactor)
 	return true;
 }
 
+FVector APickupBase::GetFocusPoint() const
+{
+	return IsValid(PickupMesh.Get()) ? PickupMesh->Bounds.Origin : GetActorLocation();
+}
+
 void APickupBase::BeginPlay()
 {
 	Super::BeginPlay();
@@ -72,12 +77,16 @@ void APickupBase::BeginPlay()
 	{
 		InitialMeshLocation = PickupMesh->GetRelativeLocation();
 	}
+
+	SetActorTickEnabled(bAnimatePickup && IsValid(PickupMesh.Get()));
 }
 
 void APickupBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	if (!PickupMesh) return;
+
+	// Animate the pickup mesh if enabled
+	if (!bAnimatePickup || !PickupMesh) return;
 
 	// Rotate around the parent component's Z axis
 	PickupMesh->AddRelativeRotation(FRotator(0.f, RotationSpeed * DeltaTime, 0.f));

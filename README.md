@@ -10,8 +10,9 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Close the open inventory with keyboard **B**, using the same controller cleanup as Tab.
 - Collect currency through native pickup overlap handling.
 - Focus nearby item pickups and press **E** to collect them, with a contextual HUD prompt and white outline.
+- Aim directly or near an item with a raised crosshair; use the **mouse wheel** to cycle eligible pickups and retain a manual selection.
 - Store item stacks, display their icons and quantities, and filter the inventory grid by category.
-- Rotate and float both item and currency meshes through the shared pickup base.
+- Optionally rotate and float both item and currency meshes through the shared pickup base; disable **Animate Pickup** for manually placed market items.
 - Configure pickup denominations and meshes using a data table backed by a C++ row struct.
 - Store currency on the character and display its balance when the inventory widget is constructed.
 - Store maximum/current health on the character in **heart units**.
@@ -40,7 +41,7 @@ A native class defines behavior and exposes selected properties to Unreal. A Blu
 | `APickupBase` | Abstract parent of item and money pickups | Shares components, rotation/bobbing, collection guards, and successful-pickup destruction. |
 | `AItemPickup` | `BP_ItemPickup` | Reads an item row, supplies its mesh, collects through interaction, and toggles mesh highlighting. |
 | `FItemRow` / `FInventoryEntry` | Item definitions / runtime entries | Separate shared item data from each stack's row name and quantity. |
-| `UInteractionComponent` | Inherited component on the character | Finds a nearby visible item, broadcasts focus changes, and rechecks focus when interacting. |
+| `UInteractionComponent` | Inherited component on the character | Finds nearby visible items, supports mouse-wheel cycling and a validated manual selection, broadcasts focus changes, and rechecks focus when interacting. |
 | `UInteractionPromptWidget` | Parent of `WBP_InteractionPrompt`, embedded in `WBP_PlayerHUD` | Shows or hides the pickup prompt in response to focus changes. |
 | `UItemSlotWidget` | Parent of `WBP_ItemSlot` | Displays the item icon and a quantity when greater than one. |
 | `UInventoryWidget` | Parent of `WBP_Inventory` | Handles UI keyboard input, currency text, category selection and hover visuals, and health test-button clicks. |
@@ -196,9 +197,9 @@ Inventory entries remain in one array, with configurable category capacities def
 
 `MaxOwnedQuantity` limits the total quantity of one item row across all stacks; zero disables this additional limit. For example, setting both `MaxStackSize` and `MaxOwnedQuantity` to 999 allows one stack of up to 999 apples, without an overflow stack. At 998 apples, a pickup of two is rejected in full; a pickup of one succeeds.
 
-The native interaction range defaults to 400 Unreal units, with a 1000-unit camera trace. The character-to-item obstruction check ends at the pickup's origin rather than the surface of its detection sphere, preventing a sphere protruding through a wall from shortening that check. Obstacles must have valid collision that blocks Visibility. `WBP_PlayerHUD` includes a centred crosshair for aiming and debugging; it hides with the HUD when the inventory opens.
+The native interaction range defaults to **200 Unreal units**, with a **1000-unit aiming trace**. The range is measured from the character's center to the mesh hit point. `WBP_PlayerHUD` places its crosshair at normalized screen coordinates **(0.5, 0.35)**. C++ deprojects that same position into a world-space ray, so the raised crosshair and targeting agree without changing the camera. The crosshair hides with the HUD when the inventory opens.
 
-`APickupBase::TryInteract()` guards against duplicate collection, calls the subclass's `TryCollect()`, and disables collision and destroys the actor only after success. `AMoneyPickup` opts into overlap collection. `AItemPickup` instead blocks the Visibility trace on its sphere and waits for explicit interaction. Both keep the shared mesh rotation and sine-wave bobbing.
+`APickupBase::TryInteract()` guards against duplicate collection, calls the subclass's `TryCollect()`, and disables collision and destroys the actor only after success. `AMoneyPickup` opts into overlap collection. `AItemPickup` waits for explicit interaction: its sphere ignores Visibility, while its mesh uses query-only collision and blocks Visibility. Both share mesh rotation and sine-wave bobbing, controlled by `bAnimatePickup`. Set **Animate Pickup** before Play; when disabled, `BeginPlay()` disables the pickup's animation tick. This setting does not enable physics or gravity simulation.
 
 The item input and focus flow is:
 
@@ -210,13 +211,28 @@ IA_PickupInteract / E (Started)
   -> InventoryComponent::TryAddItem()
 ```
 
-The interaction component traces from the camera each frame, checks the candidate's distance from the character, and checks for an obstruction from the character's eyes. Native defaults are a 1000-unit camera trace and 400-unit interaction range. `SetFocusedItem()` disables the previous item's highlight, enables the new one, and broadcasts only when the target changes. It also clears focus after collection and during `EndPlay()`.
+Automatic focus prioritizes a valid direct crosshair hit. If there is none, `GatherNearbyItems()` performs a sphere overlap around the character and filters the results to unique `AItemPickup` actors. The component projects each mesh-bounds center onto the screen and considers centers within `FocusRadiusScreenFraction`, defaulting to **0.06 of viewport height**. Smaller screen distances win, with a slight preference for the current focus to reduce switching.
+
+Candidates must pass complex Visibility traces from the view and from the character's eyes, plus the interaction-distance limit. A fallback camera trace must hit the candidate itself before any obstacle. Complex traces allow aiming into hollow market crates whose simple collision encloses the whole crate. Obstacles still need collision that blocks Visibility. Center-based assistance can reject a partially visible item whose center is covered; direct aiming at its exposed surface remains available. The overlap query also needs suitable query collision on the pickup.
+
+`FindFocusedItem()` optionally fills an array of eligible candidates for cycling. `CycleFocusedItem()` sorts them left to right on screen, with vertical position and object ID as tie-breakers, then wraps forward or backward through the list. `ManuallySelectedItem` is a weak pointer. Manual selection overrides the automatic choice only while fresh candidate checks still accept it; leaving the focus area, moving out of range, or becoming obstructed releases it. Successful collection and `EndPlay()` clear the selection. A failed inventory addition leaves the pickup available.
+
+```text
+IA_CycleFocus / Mouse Wheel Axis (Axis1D, Triggered)
+  -> Character::CycleFocus()
+  -> InteractionComponent::CycleFocusedItem(+1 or -1)
+  -> validated manual selection -> SetFocusedItem()
+```
+
+`SetFocusedItem()` disables the previous item's highlight, enables the new one, and broadcasts only when the target changes. `Interact()` calls `UpdateFocus()` again before collection, including validation of any manual choice. Focus detection runs each frame; cycling sorts candidates only when requested. This is a single-local-player implementation; split-screen aiming coordinates and multiplayer authority are not implemented.
+
+The demonstration level includes manually arranged apples in two market trays, with pickup animation disabled on those instances, plus market props under `Content/Fab`. These exercise selection among closely spaced objects without physics simulation.
 
 `WBP_InteractionPrompt` supplies the E/Pickup layout. Its native parent subscribes to `OnFocusedItemChanged`, synchronizes the initial state, and removes its subscription in `NativeDestruct()`. Its required `PromptContainer` is a Border. `WBP_PlayerHUD` contains this prompt alongside the health bar; the controller collapses the gameplay HUD while the inventory is open.
 
 `M_ItemOutline` is a Post Process material at Scene Color After Tonemapping. The project enables Custom Depth with Stencil (`r.CustomDepth=3`). Item meshes use stencil ID 1 and write Custom Depth only while focused. The material compares four neighboring stencil samples to form an inner border, then compares CustomDepth against SceneDepth with a small tolerance to suppress covered pixels. Its Custom expression is HLSL shader code; C++ controls focus and mesh flags.
 
-In `BP_ThirdPersonCharacter` Class Defaults, assign `IA_PickupInteract` to **Interact Action** and `M_ItemOutline` to **Item Outline Material**. The character's native `BeginPlay()` subscribes to focus changes and synchronizes the current target. `HandleOutlineFocusChanged()` adds the material to `FollowCamera` when an item is focused and removes it when focus clears. `EndPlay()` removes the subscription and effect. No Blueprint graph logic or post-process volume is required. A missing material produces a warning.
+In `BP_ThirdPersonCharacter` Class Defaults, assign `IA_PickupInteract` to **Interact Action**, `IA_CycleFocus` to **Cycle Focus Next Action**, and `M_ItemOutline` to **Item Outline Material**. Despite the property name, Cycle Focus Next Action handles both wheel directions. `IMC_Default` maps E to pickup and Mouse Wheel Axis to the Axis1D cycling action, with no action triggers or modifiers required. The character's native `BeginPlay()` subscribes to focus changes and synchronizes the current target. `HandleOutlineFocusChanged()` adds the material to `FollowCamera` when an item is focused and removes it when focus clears. `EndPlay()` removes the subscription and effect. No Blueprint graph logic or post-process volume is required. A missing material produces a warning.
 
 The outline post-process material is removed from the camera while no item is focused, avoiding its fullscreen pass during idle gameplay. Focus detection still runs each frame, and highlighting still has a rendering cost while active. Comparing GPU timings at fixed resolution remains planned work; no performance measurements have been established yet.
 
@@ -345,6 +361,10 @@ For changes to reflected property types, native inheritance, or default subobjec
 - Pickups: select valid rows from `DT_MoneyNative` through **Currency Row**.
 
 ## Verification and remaining work
+
+On November 9, 2026, the user confirmed wider focus and mouse-wheel cycling working in Play. A subsequent audit verified the Axis1D action, Mouse Wheel Axis mapping, character action assignment, 200-unit range, 0.06 focus radius, and crosshair anchors. The audit corrected the wheel binding from Started to Triggered so consecutive nonzero input updates can be processed. After closing Unreal Editor to release its DLL lock, the final Development Editor / Win64 build succeeded in 23.72 seconds. The final binding correction was compiled and linked, but a new Play test after that correction has not been recorded. These observations are manual validation, not an automated regression suite.
+
+To retest pickup focus, aim directly at and slightly beside market apples; scroll both directions and stop to check that the selection remains stable; press E to collect the highlighted item. Check that aiming away, moving out of reach, and adding an obstacle release manual selection. Repeat with one candidate and no candidates, and verify automatic money collection remains available. Fast wheel scrolling can combine several physical detents into one axis update; the handler currently advances one candidate per nonzero input callback.
 
 On November 9, 2026, the user reported successful builds and Play tests of inventory capacity and per-item ownership limits. After adding the HUD crosshair and correcting the obstruction trace endpoint, the user also confirmed that the obstacle test worked. These are manual checks, not an automated regression suite.
 

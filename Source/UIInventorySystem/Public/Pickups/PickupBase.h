@@ -21,6 +21,8 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	bool TryInteract(AActor* Interactor);
+
+	FVector GetFocusPoint() const;
 protected:
 	void InitializePickupComponents(FName CollisionComponentName);
 
@@ -38,6 +40,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Animation")
 	float RotationSpeed = 90.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Animation")
+	bool bAnimatePickup = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup|Animation",
 		meta = (ClampMin = "0.0", UIMin = "0.0"))

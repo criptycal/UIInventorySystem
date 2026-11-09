@@ -70,6 +70,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> InteractAction;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> CycleFocusNextAction;
+
+	void CycleFocus(const FInputActionValue& Value);
+
 	void Interact();
 
 	virtual void BeginPlay() override;

@@ -109,6 +109,12 @@ void AUIInventorySystemCharacter::SetupPlayerInputComponent(UInputComponent* Pla
 		{
 			EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AUIInventorySystemCharacter::Interact);
 		}
+
+		// Cycle Focus
+		if (CycleFocusNextAction)
+		{
+			EnhancedInputComponent->BindAction(CycleFocusNextAction, ETriggerEvent::Triggered, this, &AUIInventorySystemCharacter::CycleFocus);
+		}
 	}
 	else
 	{
@@ -243,4 +249,11 @@ void AUIInventorySystemCharacter::EndPlay(const EEndPlayReason::Type EndPlayReas
 	Super::EndPlay(EndPlayReason);
 }
 
-
+void AUIInventorySystemCharacter::CycleFocus(const FInputActionValue& Value)
+{
+	if (!InteractionComponent) return;
+	const float InputValue = Value.Get<float>();
+	if (FMath::IsNearlyZero(InputValue)) return;
+	const int32 Direction = (InputValue > 0.0f) ? 1 : -1;
+	InteractionComponent->CycleFocusedItem(Direction);
+}

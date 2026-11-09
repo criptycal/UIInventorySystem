@@ -14,8 +14,15 @@ AItemPickup::AItemPickup()
 	// Set default values for the pickup mesh and sphere
 	PickupMesh->SetCustomDepthStencilValue(1);
 	PickupMesh->SetRenderCustomDepth(false);
-	PickupSphere->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 
+	//the large sphere must not intercept our aiming trace
+	PickupSphere->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+
+	//allow traces to detect the mesh, without physical blocking.
+	PickupMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	PickupMesh->SetGenerateOverlapEvents(false);
+	PickupMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+	PickupMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 }
 
 void AItemPickup::OnConstruction(const FTransform& Transform)
