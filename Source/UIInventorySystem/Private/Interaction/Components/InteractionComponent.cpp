@@ -82,7 +82,7 @@ AItemPickup* UInteractionComponent::FindFocusedItem() const
 
 	if (World->LineTraceTestByChannel(
 		EyesLocation,
-		HitResult.ImpactPoint,
+		ItemPickup->GetActorLocation(),
 		ECC_Visibility,
 		QueryParams
 	)) 

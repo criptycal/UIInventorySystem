@@ -190,7 +190,13 @@ The sphere collision and static-mesh components are created in C++. The editor s
 
 ## Item interaction and outline
 
-`FItemRow` holds the display name, description, category, icon, world mesh, maximum stack size, and sort priority. `UInventoryComponent::TryAddItem()` fills compatible stacks before splitting the remaining quantity into new entries. Items with maximum stack size one occupy separate slots. The pickup and inventory must reference the same definitions table.
+`FItemRow` holds the display name, description, category, icon, world mesh, maximum stack size, maximum owned quantity, and sort priority. `UInventoryComponent::TryAddItem()` fills compatible stacks before splitting the remaining quantity into new entries. Items with maximum stack size one occupy separate slots. The pickup and inventory must reference the same definitions table.
+
+Inventory entries remain in one array, with configurable category capacities defaulting to 5 weapon slots, 8 shield slots, and 7 food slots. Each stack consumes one slot. Before modifying any entries, `TryAddItem()` checks both available stack space and the slots needed for the entire request. Requests that do not fit are rejected without partially collecting the pickup.
+
+`MaxOwnedQuantity` limits the total quantity of one item row across all stacks; zero disables this additional limit. For example, setting both `MaxStackSize` and `MaxOwnedQuantity` to 999 allows one stack of up to 999 apples, without an overflow stack. At 998 apples, a pickup of two is rejected in full; a pickup of one succeeds.
+
+The native interaction range defaults to 400 Unreal units, with a 1000-unit camera trace. The character-to-item obstruction check ends at the pickup's origin rather than the surface of its detection sphere, preventing a sphere protruding through a wall from shortening that check. Obstacles must have valid collision that blocks Visibility. `WBP_PlayerHUD` includes a centred crosshair for aiming and debugging; it hides with the HUD when the inventory opens.
 
 `APickupBase::TryInteract()` guards against duplicate collection, calls the subclass's `TryCollect()`, and disables collision and destroys the actor only after success. `AMoneyPickup` opts into overlap collection. `AItemPickup` instead blocks the Visibility trace on its sphere and waits for explicit interaction. Both keep the shared mesh rotation and sine-wave bobbing.
 
@@ -204,7 +210,7 @@ IA_PickupInteract / E (Started)
   -> InventoryComponent::TryAddItem()
 ```
 
-The interaction component traces from the camera each frame, checks the candidate's distance from the character, and checks for an obstruction from the character's eyes. Native defaults are a 1000-unit camera trace and 300-unit interaction range. `SetFocusedItem()` disables the previous item's highlight, enables the new one, and broadcasts only when the target changes. It also clears focus after collection and during `EndPlay()`.
+The interaction component traces from the camera each frame, checks the candidate's distance from the character, and checks for an obstruction from the character's eyes. Native defaults are a 1000-unit camera trace and 400-unit interaction range. `SetFocusedItem()` disables the previous item's highlight, enables the new one, and broadcasts only when the target changes. It also clears focus after collection and during `EndPlay()`.
 
 `WBP_InteractionPrompt` supplies the E/Pickup layout. Its native parent subscribes to `OnFocusedItemChanged`, synchronizes the initial state, and removes its subscription in `NativeDestruct()`. Its required `PromptContainer` is a Border. `WBP_PlayerHUD` contains this prompt alongside the health bar; the controller collapses the gameplay HUD while the inventory is open.
 
@@ -340,6 +346,8 @@ For changes to reflected property types, native inheritance, or default subobjec
 
 ## Verification and remaining work
 
+On November 9, 2026, the user reported successful builds and Play tests of inventory capacity and per-item ownership limits. After adding the HUD crosshair and correcting the obstruction trace endpoint, the user also confirmed that the obstacle test worked. These are manual checks, not an automated regression suite.
+
 On November 8, 2026, the latest recorded Development Editor build succeeded at 15:52 local time, after adding event-driven outline activation and cleanup. The user confirmed the optimization working in Play, following earlier checks of manual pickup, automatic currency pickup, and the focus-driven prompt. Runtime logs also record successful food and weapon pickups. The outline graph, stencil configuration, and character material assignment were inspected through the editor tools. GPU cost has not been measured, and thorough visual occlusion and resolution testing remain follow-up work.
 
 The November 4, 2026 Development Editor build succeeded. Manual Play-in-Editor checks have covered Tab opening/closing, currency collection, generated heart counts, full/half/empty textures, damage/healing buttons, immediate health updates, and the gameplay HUD displaying the same health after closing the inventory. Normal initialization is `CurrentHealth = MaxHealth`; the buttons now provide a way to test partial health without changing initialization. There is no automated CI test suite configured yet.
@@ -355,7 +363,7 @@ Still to implement:
 - Gameplay damage sources (such as an enemy), healing items, and death/revival rules.
 - Runtime maximum-health changes and corresponding heart-slot rebuilding.
 - Subscribing the currency text to the existing `OnBalanceChanged` delegate.
-- Item selection, equipment, consumption, removal, inventory capacity, and live grid-change notifications.
+- Item selection, equipment, consumption, removal, and live grid-change notifications.
 - Profile the outline's GPU cost at the intended gameplay resolutions.
 - Sort/Select actions, a rotatable character preview, and Adventure Log/System screens with C++ navigation.
 - Configurable UI key bindings and gamepad input, with prompts matching the active controls.

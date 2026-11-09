@@ -51,7 +51,73 @@ bool UInventoryComponent::TryAddItem(FName ItemRowName, int32 Quantity)
 		return false;
 	}
 
+	int64 OwnedQuantity = 0;
+
 	int32 RemainingQuantity = Quantity;
+
+	const int32 SlotCapacity = GetSlotCapacity(Definition->Category);
+
+	int32 UsedCategorySlots = 0;
+
+	int32 QuantityNeedingNewSlots = Quantity;
+
+	for (const FInventoryEntry& Entry : Entries)
+	{
+		const FItemRow* ExistingDefinition =
+			FindItemDefinition(Entry.ItemRowName);
+
+		if (!ExistingDefinition)
+		{
+			UE_LOG(LogUIInventorySystem, Warning,
+				TEXT("InventoryComponent::TryAddItem: Existing entry '%s' has no valid definition"),
+				*Entry.ItemRowName.ToString());
+			return false;
+		}
+
+		if (ExistingDefinition->Category == Definition->Category)
+		{
+			++UsedCategorySlots;
+		}
+
+		if (Entry.ItemRowName == ItemRowName)
+		{
+			OwnedQuantity += Entry.Quantity;
+			const int32 SpaceInStack =
+				FMath::Max(0, MaxStackSize - Entry.Quantity);
+
+			const int32 QuantityThatFits = FMath::Min(SpaceInStack, QuantityNeedingNewSlots);
+
+			QuantityNeedingNewSlots -= QuantityThatFits;
+		}
+	}
+
+	if (Definition->MaxOwnedQuantity > 0 && OwnedQuantity + Quantity > Definition->MaxOwnedQuantity)
+	{
+		UE_LOG(LogUIInventorySystem, Warning,
+			TEXT("Cannot add '%s' x%d: would exceed MaxOwnedQuantity (%d)"),
+			*ItemRowName.ToString(),
+			Quantity,
+			Definition->MaxOwnedQuantity);
+		return false;
+	}
+
+	const int32 FreeCategorySlots = FMath::Max(0, SlotCapacity - UsedCategorySlots);
+
+	const int32 RequiredNewSlots = QuantityNeedingNewSlots > 0
+		? 1 + (QuantityNeedingNewSlots - 1) / MaxStackSize
+		: 0;
+
+	// Check if there are enough free slots for the new item stacks
+	if (RequiredNewSlots > FreeCategorySlots)
+	{
+		UE_LOG(LogUIInventorySystem, Warning,
+			TEXT("Cannot add '%s' x%d: needs %d new slots, but only %d are free."),
+			*ItemRowName.ToString(),
+			Quantity,
+			RequiredNewSlots,
+			FreeCategorySlots);
+		return false;
+	}
 
 	// Fill existing stacks before creating new ones
 	for (FInventoryEntry& Entry : Entries)
@@ -134,4 +200,20 @@ void UInventoryComponent::BeginPlay()
 	UE_LOG(LogUIInventorySystem, Warning,
 		TEXT("Sample inventory contains %d entries."),
 		Entries.Num());
+}
+
+int32 UInventoryComponent::GetSlotCapacity(EItemCategory Category) const
+{
+	switch (Category)
+	{
+	case EItemCategory::Weapon:
+		return FMath::Max(0, WeaponSlotCapacity);
+	case EItemCategory::Shields:
+		return FMath::Max(0, ShieldsSlotCapacity);
+	case EItemCategory::Food:
+		return FMath::Max(0, FoodSlotCapacity);
+	default:
+		UE_LOG(LogUIInventorySystem, Warning, TEXT("GetSlotCapacity: Unknown category %d"), static_cast<int32>(Category));
+		return 0;
+	}
 }

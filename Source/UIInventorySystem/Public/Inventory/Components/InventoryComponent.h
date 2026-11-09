@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Inventory/Data/InventoryEntry.h"
+#include "Inventory/Data/ItemCategory.h"
 #include "InventoryComponent.generated.h"
 
 struct FItemRow;
@@ -27,6 +28,8 @@ public:
 
 	const UDataTable* GetItemDefinitions() const { return ItemDefinitions.Get(); }
 
+	int32 GetSlotCapacity(EItemCategory Category) const;
+
 private:
 	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
 	TObjectPtr<UDataTable> ItemDefinitions = nullptr;
@@ -36,6 +39,18 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category="Inventory|Testing")
 	bool bAddSampleItems = false;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory|Capacity",
+		meta = (ClampMin = "0", UIMin = "0"))
+	int32 WeaponSlotCapacity = 5;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory|Capacity",
+		meta = (ClampMin = "0", UIMin = "0"))
+	int32 ShieldsSlotCapacity = 8;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory|Capacity",
+		meta = (ClampMin = "0", UIMin = "0"))
+	int32 FoodSlotCapacity = 7;
 
 protected:
 	virtual void BeginPlay() override;

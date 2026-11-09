@@ -42,7 +42,7 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = "Interaction",
 		meta = (ClampMin = "1.0", UIMin = "1.0"))
-	float InteractionDistance = 300.0f;
+	float InteractionDistance = 400.0f;
 
 	UPROPERTY(EditAnywhere, Category = "Interaction",
 		meta = (ClampMin = "1.0", UIMin = "1.0"))
