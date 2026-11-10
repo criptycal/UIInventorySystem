@@ -12,6 +12,7 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Focus nearby item pickups and press **E** to collect them, with a contextual HUD prompt and white outline.
 - Aim directly or near an item with a raised crosshair; use the **mouse wheel** to cycle eligible pickups and retain a manual selection.
 - Store item stacks, display their icons and quantities, and filter the inventory grid by category.
+- Browse each category in pages of 20 entries using Previous/Next arrows, with unavailable directions disabled.
 - Optionally rotate and float both item and currency meshes through the shared pickup base; disable **Animate Pickup** for manually placed market items.
 - Configure pickup denominations and meshes using a data table backed by a C++ row struct.
 - Store currency on the character and display its balance when the inventory widget is constructed.
@@ -74,6 +75,7 @@ That is why they appear as inherited components in `BP_ThirdPersonCharacter`. Th
 | `WBP_HealthBar` | `HealthBarWrapBox` | Wrap Box |
 | `WBP_Heart` | `HeartImage` | Image |
 | `WBP_Inventory` | `ItemGrid` | Wrap Box |
+| `WBP_Inventory` | `PreviousPageButton`, `NextPageButton` | Button |
 | `WBP_ItemSlot` | `ItemIcon`, `QuantityText` | Image, Text Block |
 | `WBP_InteractionPrompt` | `PromptContainer` | Border |
 
@@ -166,6 +168,18 @@ CategorySection (Vertical Box)
 
 Buttons are non-focusable and their background brushes use No Draw Type, leaving the icons as their visible content. The divider uses a 600-by-1 Size Box, an Auto slot with 8 units of top padding, and a white Border at alpha `0.25` with zero content padding. The divider group is not hit-testable. The item grid is rebuilt when opening the inventory or changing category, using matching entries from the character's InventoryComponent.
 
+### Inventory pages and test samples
+
+`UInventoryWidget::RebuildItemGrid()` first gathers valid occupied entries in the selected category into a temporary array. It calculates `TotalPages`, clamps `CurrentPageIndex`, and creates widgets only for the current page's range. `ItemsPerPage` is 20. Empty categories disable both arrows; the first and last pages disable Previous and Next respectively. Selecting a category resets to page zero. Opening the inventory also resets the current category's page through `SelectCategory()`.
+
+The grid uses 112-by-112 slots with 12-unit gaps and an explicit Wrap Size of 608. `ItemPageSizeBox` is 608 by 484 at canvas position (150, 420), accommodating five columns and four rows. It replaces the old ScrollBox. `PreviousPageButton` and `NextPageButton` sit beside the grid and bind to native click handlers in `NativeOnInitialized()`. They are non-focusable; their centered text arrows do not intercept pointer input.
+
+Entries currently retain insertion order within each category. Existing stacks are filled in place; new entries are appended. `SortPriority` is present in the item definition but is not applied yet, and the Sort footer action remains a placeholder. Pagination changes presentation, not inventory storage or capacity.
+
+The saved character Blueprint enables **Add Sample Items** and overrides all three category capacities to 40 for testing. Current samples create 36 weapon entries, 25 shield entries, and 25 food stacks using the current data table. Each of the four non-apple food types receives 5000 units, producing six stacks at a maximum stack size of 999; apples add one stack. SteelLizalShield remains limited to one owned item. Disable Add Sample Items for an empty starting inventory; category capacities are separate settings and remain at their configured values.
+
+The user manually tested an expanded dataset of 125 entries per category (seven pages) and reported it working. That larger dataset and its 140-slot capacity overrides have been reverted to the smaller test configuration above. Slot borders, hover markers, quantity-badge styling, item descriptions, and the Sort action remain follow-up work.
+
 The health test buttons remain inside `HorizontalBox_108`, whose visibility is **Collapsed**. To use them again, set that parent to **Not Hit-Testable (Self Only)**, compile and save the widget, and start a fresh Play session. Their existing C++ handlers remain available.
 
 ## Currency pickups and data tables
@@ -225,6 +239,10 @@ IA_CycleFocus / Mouse Wheel Axis (Axis1D, Triggered)
 ```
 
 `SetFocusedItem()` disables the previous item's highlight, enables the new one, and broadcasts only when the target changes. `Interact()` calls `UpdateFocus()` again before collection, including validation of any manual choice. Focus detection runs each frame; cycling sorts candidates only when requested. This is a single-local-player implementation; split-screen aiming coordinates and multiplayer authority are not implemented.
+
+Items must also be in front of the character, even when the camera can see behind them. `InteractionHalfAngleDegrees` defaults to 90 degrees on either side of the character's forward direction; a smaller value narrows this area. The check compares horizontal directions so items on floors or tables remain eligible. It applies to direct aiming, assistance, cycling, and interaction revalidation. Turning away clears a selected item if it becomes ineligible. Camera position and aiming remain unchanged.
+
+The interaction implementation separates query setup (`BuildFocusContext`), reach checks (`CanReachItem`), direct targeting (`FindDirectTarget`), and assisted-target evaluation (`EvaluateCandidate`). A temporary `FFocusContext` holds the view and collision-query data for one search. Each `FFocusCandidate` holds its item, mesh focus point, projected screen position, and score, so cycling comparisons reuse those values instead of projecting repeatedly. These private structs live only during a query; persistent focus remains stored in weak pointers. `FindFocusedItem` coordinates the search, while `UpdateFocus` and `CycleFocusedItem` manage selection policy.
 
 The demonstration level includes manually arranged apples in two market trays, with pickup animation disabled on those instances, plus market props under `Content/Fab`. These exercise selection among closely spaced objects without physics simulation.
 
@@ -361,6 +379,8 @@ For changes to reflected property types, native inheritance, or default subobjec
 - Pickups: select valid rows from `DT_MoneyNative` through **Currency Row**.
 
 ## Verification and remaining work
+
+On November 10, 2026, source review checked category filtering before pagination, empty categories, page clamping, button boundary guards, and category resets. The user reported navigation working with the seven-page test dataset. The latest local UnrealBuildTool log reports a successful build in 7.95 seconds; its output DLL is newer than the restored sample-data source. No new build or Play session was run as part of the commit checkpoint. The saved widget layout and category capacities were inspected through the editor tools. Rounded slot styling and hover effects are not yet implemented.
 
 On November 9, 2026, the user confirmed wider focus and mouse-wheel cycling working in Play. A subsequent audit verified the Axis1D action, Mouse Wheel Axis mapping, character action assignment, 200-unit range, 0.06 focus radius, and crosshair anchors. The audit corrected the wheel binding from Started to Triggered so consecutive nonzero input updates can be processed. After closing Unreal Editor to release its DLL lock, the final Development Editor / Win64 build succeeded in 23.72 seconds. The final binding correction was compiled and linked, but a new Play test after that correction has not been recorded. These observations are manual validation, not an automated regression suite.
 

@@ -104,6 +104,24 @@ private:
 
 	void RebuildItemGrid();
 
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> PreviousPageButton;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> NextPageButton;
+
+	static constexpr int32 ItemsPerPage = 20;
+
+	int32 CurrentPageIndex = 0;
+	int32 TotalPages = 0;
+
+	UFUNCTION()
+	void HandlePreviousPageClicked();
+
+	UFUNCTION()
+	void HandleNextPageClicked();
+
+	void UpdatePageButtons();
 
 	// Close button support is kept here for later reuse; Tab handles closing.
 	// UPROPERTY(meta = (BindWidget))

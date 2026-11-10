@@ -1,5 +1,7 @@
 ﻿UIInventorySystem - Inventory development TODO
-Updated: 2026-10-22
+Latest planning update: 2026-11-10 (see PAGINATION CHECKPOINT at the end).
+Earlier dated notes are historical; their pause instructions and status are superseded by subsequent work.
+Historical update: 2026-10-22
 
 Status - C++ development paused at the user's request
 - Finish a substantial process or the inventory section of the course first, to understand the full system before deciding what to improve or replace.
@@ -158,3 +160,57 @@ Files and guide
 - /Game/Inventory/Input/IA_Inventory and IMC_Inventory
 - Docs/Inventory-UI-CPP-Guide.txt: existing shareable guide covers the earlier input/window toggle implementation. It predates the UI Only, cursor/look, Close button, and widget keyboard-handling additions. Preserve it; update or extend only when requested.
 - This handoff saves notes only. It does not save any unsaved Unreal/IDE buffers, compile, or change gameplay code/assets.
+
+======================================================================
+CURRENT PRIORITIES - 2026-11-09 - Inventory fixes before pickup presentation
+======================================================================
+
+[ ] FIRST: identify and fix the inventory issues the user wants to address.
+    Specific issues still need to be described/reproduced.
+    Defer the features below until the inventory fixes are handled.
+
+[ ] Focused-item information: show the item's name and description beside the
+    E / Pickup prompt when gameplay focus selects it. Use the same item as the
+    highlight and cycling system; clear/update text as focus changes.
+    Read shared item-definition data instead of duplicating descriptions in UI.
+
+[ ] Pickup animation: add an animation/presentation when collecting an item.
+    Choose the intended motion and assets with the user (character reaching,
+    item moving toward the player, or another collection effect).
+    This is separate from the existing idle floating/rotating pickup animation.
+
+[ ] Successful-pickup sound: play only after inventory insertion succeeds.
+    Failed pickups, including a full inventory, must not play success effects.
+
+[ ] Pickup presentation modal: display the collected item's name, description,
+    and rotating mesh preview. Use a separate preview representation and retain
+    item-definition data; the collected world actor may already be destroyed.
+
+[ ] Esc closes the modal and restores the appropriate gameplay input/focus state.
+    Define movement, camera control, and pause behavior while the modal is open;
+    coordinate with inventory opening/closing so UI input states do not conflict.
+
+[ ] Decide when to show the modal: every pickup for initial testing versus only
+    first discovery, with a brief notification for repeat pickups. First-discovery
+    behavior is a suggestion, not an agreed requirement yet.
+
+[ ] Verify focus changes, repeated collection, full inventory, destroyed pickups,
+    and repeated modal open/close cycles without duplicate rewards or stuck input.
+
+Implementation preference: C++ behavior; UMG/editor assets for visual layout,
+audio, meshes, and animation configuration. These entries are planned work only.
+
+======================================================================
+PAGINATION CHECKPOINT - 2026-11-10
+======================================================================
+[x] Add 20-entry pages with Previous/Next buttons and category page resets.
+[x] Replace the scrolling grid with a five-column, four-row page layout.
+[x] User tested seven pages per category and reported navigation working.
+[x] Restore smaller samples: 36 weapons, 25 shields, 25 food stacks; capacities 40.
+[x] Refactor interaction queries and add the character-facing eligibility check.
+[ ] NEXT: polish WBP_ItemSlot rounded background and gray outline.
+[ ] Add native slot-hover feedback and white corner markers.
+[ ] Style the quantity badge for three digits.
+[ ] Implement inventory-hover item information, then reuse it for world focus.
+[ ] Implement sorting; currently category entries retain insertion order.
+Pickup animation, sound, and the rotating preview modal remain deferred above.

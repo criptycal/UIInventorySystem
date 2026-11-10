@@ -180,22 +180,23 @@ void UInventoryComponent::BeginPlay()
 
 	if (!bAddSampleItems) return;
 
-	//Sample Weapons
-	TryAddItem(TEXT("BlizzardRod"), 2);
-	TryAddItem(TEXT("KnightsBroadsword"), 1);
-	TryAddItem(TEXT("SpikedBokoClub"), 1);
+	// Sample weapons: 36 separate entries for pagination testing.
+	TryAddItem(TEXT("BlizzardRod"), 12);
+	TryAddItem(TEXT("KnightsBroadsword"), 12);
+	TryAddItem(TEXT("SpikedBokoClub"), 12);
 
-	// Sample shields.
-	TryAddItem(TEXT("Daybreaker"), 1);
-	TryAddItem(TEXT("RoyalGuard"), 1);
+	// Sample shields: 25 entries; SteelLizalShield has an ownership limit of one.
+	TryAddItem(TEXT("Daybreaker"), 12);
+	TryAddItem(TEXT("RoyalGuard"), 12);
 	TryAddItem(TEXT("SteelLizalShield"), 1);
 
-	// Sample food.
+	// Sample food: with the current 999 stack sizes, each 5000 creates six
+	// stacks (five full stacks and one with five items). Plus apples = 25 entries.
 	TryAddItem(TEXT("Apple"), 23);
-	TryAddItem(TEXT("FortifiedPumpkin"), 2);
-	TryAddItem(TEXT("Hydromelon"), 2);
-	TryAddItem(TEXT("MightyBananas"), 3);
-	TryAddItem(TEXT("SpicyPepper"), 5);
+	TryAddItem(TEXT("FortifiedPumpkin"), 5000);
+	TryAddItem(TEXT("Hydromelon"), 5000);
+	TryAddItem(TEXT("MightyBananas"), 5000);
+	TryAddItem(TEXT("SpicyPepper"), 5000);
 
 	UE_LOG(LogUIInventorySystem, Warning,
 		TEXT("Sample inventory contains %d entries."),

@@ -68,7 +68,48 @@ void UInventoryWidget::NativeOnInitialized()
 		}
 	}
 
+	if (PreviousPageButton)
+	{
+		PreviousPageButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandlePreviousPageClicked);
+	}
+
+	if (NextPageButton)
+	{
+		NextPageButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleNextPageClicked);
+	}
+
+	UpdatePageButtons();
 }
+
+void UInventoryWidget::HandlePreviousPageClicked()
+{
+	if (CurrentPageIndex <= 0) return;
+
+	--CurrentPageIndex;
+	RebuildItemGrid();
+}
+
+void UInventoryWidget::HandleNextPageClicked()
+{
+	if (TotalPages <= 0 || CurrentPageIndex >= TotalPages - 1) return;
+
+	++CurrentPageIndex;
+	RebuildItemGrid();
+}
+
+void UInventoryWidget::UpdatePageButtons()
+{
+	if (PreviousPageButton)
+	{
+		PreviousPageButton->SetIsEnabled(TotalPages > 0 && CurrentPageIndex > 0);
+	}
+
+	if (NextPageButton)
+	{
+		NextPageButton->SetIsEnabled(TotalPages > 0 && CurrentPageIndex < TotalPages - 1);
+	}
+}
+
 
 void UInventoryWidget::NativeConstruct()
 {
@@ -219,7 +260,10 @@ void UInventoryWidget::SelectCategory(EItemCategory NewCategory)
 		UE_LOG(LogTemp, Warning, TEXT("Invalid inventory category selected."));
 		return;
 	}
+
 	CurrentCategory = NewCategory;
+
+	CurrentPageIndex = 0;
 
 	if (CategoryTitle)
 	{
@@ -256,10 +300,10 @@ void UInventoryWidget::UpdateCategoryVisuals()
 
 void UInventoryWidget::RebuildItemGrid()
 {
-	if (!ItemGrid)
-	{
-		return;
-	}
+	TotalPages = 0;
+	UpdatePageButtons();
+
+	if (!ItemGrid) return;
 
 	ItemGrid->ClearChildren();
 
@@ -287,38 +331,61 @@ void UInventoryWidget::RebuildItemGrid()
 		return;
 	}
 
+	//Gather the occupied entries belonging to the current category
+	TArray<FInventoryEntry> CategoryEntries;
+
 	for (const FInventoryEntry& Entry : Inventory->GetEntries())
 	{
-		if (Entry.Quantity <= 0)
-		{
-			continue;
-		}
+		if (Entry.Quantity <= 0) continue;
 
 		const FItemRow* Definition =
 			Inventory->FindItemDefinition(Entry.ItemRowName);
 
-		if (!Definition || Definition->Category != CurrentCategory)
+		if (Definition && Definition->Category == CurrentCategory) CategoryEntries.Add(Entry);
+	}
+
+	const int32 EntryCount = CategoryEntries.Num();
+
+	TotalPages = EntryCount > 0 ? 1 + (EntryCount - 1) / ItemsPerPage : 0;
+
+	CurrentPageIndex = FMath::Clamp(CurrentPageIndex, 0, FMath::Max(0, TotalPages - 1));
+
+	UpdatePageButtons();
+
+	//End index is exclusive: stop before reaching it
+	const int32 StartIndex = CurrentPageIndex * ItemsPerPage;
+	const int32 EndIndex = StartIndex +
+		FMath::Min(ItemsPerPage, EntryCount - StartIndex);
+
+	for (int32 Index = StartIndex; Index < EndIndex; ++Index)
+	{
+		const FInventoryEntry& Entry = CategoryEntries[Index];
+
+		const FItemRow* Definition = Inventory->FindItemDefinition(Entry.ItemRowName);
+
+		if (!Definition)
 		{
+			UE_LOG(LogUIInventorySystem, Warning,
+				TEXT("Cannot display inventory: item definition not found for row name %s."),
+				*Entry.ItemRowName.ToString());
 			continue;
 		}
 
-		UItemSlotWidget* SlotWidget =
-			CreateWidget<UItemSlotWidget>(
-				GetOwningPlayer(),
-				ItemSlotClass);
-
+		UItemSlotWidget* SlotWidget = CreateWidget<UItemSlotWidget>(GetOwningPlayer(), ItemSlotClass);
 		if (!SlotWidget)
 		{
+			UE_LOG(LogUIInventorySystem, Warning,
+				TEXT("Cannot display inventory: failed to create item slot widget."));
 			continue;
 		}
 
-		SlotWidget->SetItemDisplay(
-			Definition->Icon.Get(),
-			Entry.Quantity);
+		SlotWidget->SetItemDisplay(Definition->Icon.Get(), Entry.Quantity);
 
 		ItemGrid->AddChildToWrapBox(SlotWidget);
 	}
 }
+
+
 
 // void UInventoryWidget::HandleCloseButtonClicked()
 // {
