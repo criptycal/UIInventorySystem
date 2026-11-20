@@ -23,7 +23,15 @@ const TArray<FInventoryEntry>& UInventoryComponent::GetEntries() const
 
 bool UInventoryComponent::TryAddItem(FName ItemRowName, int32 Quantity)
 {
-	if (ItemRowName.IsNone() || Quantity <= 0)
+	const FItemRow* Definition = FindItemDefinition(ItemRowName);
+	if (!Definition || Quantity <= 0) return false;
+	// A bulk grant describes identical copies. Call once per item for independent rolls.
+	return TryAddItemWithPower(ItemRowName, Quantity, Definition->RollEquipmentPower());
+}
+
+bool UInventoryComponent::TryAddItemWithPower(FName ItemRowName, int32 Quantity, int32 EquipmentPower)
+{
+	if (ItemRowName.IsNone() || Quantity <= 0 || EquipmentPower < 0)
 	{
 		UE_LOG(LogUIInventorySystem, Warning, TEXT("Cannot add item: invalid row name or quantity"));
 		return false;
@@ -44,6 +52,7 @@ bool UInventoryComponent::TryAddItem(FName ItemRowName, int32 Quantity)
 	}
 
 	const int32 MaxStackSize = Definition->MaxStackSize;
+	const int32 ResolvedPower = Definition->ResolveEquipmentPower(EquipmentPower);
 
 	if (MaxStackSize <= 0)
 	{
@@ -82,6 +91,8 @@ bool UInventoryComponent::TryAddItem(FName ItemRowName, int32 Quantity)
 		if (Entry.ItemRowName == ItemRowName)
 		{
 			OwnedQuantity += Entry.Quantity;
+			// Ownership limits count all rolls, but stack space must match the power.
+			if (Definition->ResolveEquipmentPower(Entry.EquipmentPower) != ResolvedPower) continue;
 			const int32 SpaceInStack =
 				FMath::Max(0, MaxStackSize - Entry.Quantity);
 
@@ -123,6 +134,7 @@ bool UInventoryComponent::TryAddItem(FName ItemRowName, int32 Quantity)
 	for (FInventoryEntry& Entry : Entries)
 	{
 		if (Entry.ItemRowName != ItemRowName ||
+			Definition->ResolveEquipmentPower(Entry.EquipmentPower) != ResolvedPower ||
 			Entry.Quantity >= MaxStackSize)
 		{
 			continue;
@@ -132,10 +144,12 @@ bool UInventoryComponent::TryAddItem(FName ItemRowName, int32 Quantity)
 		const int32 AmountToAdd = FMath::Min(AvailableSpace, RemainingQuantity);
 
 		Entry.Quantity += AmountToAdd;
+		Entry.EquipmentPower = ResolvedPower;
 		RemainingQuantity -= AmountToAdd;
 
 		if (RemainingQuantity <= 0)
 		{
+			OnInventoryChanged.Broadcast();
 			return true; // All items added successfully
 		}
 	}
@@ -145,12 +159,15 @@ bool UInventoryComponent::TryAddItem(FName ItemRowName, int32 Quantity)
 	{
 		const int32 StackQuantity = FMath::Min(MaxStackSize, RemainingQuantity);
 		FInventoryEntry NewEntry;
+		NewEntry.EntryId = FGuid::NewGuid();
 		NewEntry.ItemRowName = ItemRowName;
 		NewEntry.Quantity = StackQuantity;
+		NewEntry.EquipmentPower = ResolvedPower;
 
 		Entries.Add(NewEntry);
 		RemainingQuantity -= StackQuantity;
 	}
+	OnInventoryChanged.Broadcast();
 	return true;
 }
 
@@ -178,17 +195,27 @@ void UInventoryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	for (FInventoryEntry& Entry : Entries)
+	{
+		if (!Entry.EntryId.IsValid()) Entry.EntryId = FGuid::NewGuid();
+		if (const FItemRow* Definition = FindItemDefinition(Entry.ItemRowName))
+		{
+			Entry.EquipmentPower = Definition->ResolveEquipmentPower(Entry.EquipmentPower);
+		}
+	}
+
 	if (!bAddSampleItems) return;
 
-	// Sample weapons: 36 separate entries for pagination testing.
-	TryAddItem(TEXT("BlizzardRod"), 12);
-	TryAddItem(TEXT("KnightsBroadsword"), 12);
-	TryAddItem(TEXT("SpikedBokoClub"), 12);
-
-	// Sample shields: 25 entries; SteelLizalShield has an ownership limit of one.
-	TryAddItem(TEXT("Daybreaker"), 12);
-	TryAddItem(TEXT("RoyalGuard"), 12);
-	TryAddItem(TEXT("SteelLizalShield"), 1);
+	// Independent rolls per equipment copy; matching type and power share a stack.
+	for (int32 Index = 0; Index < 12; ++Index)
+	{
+		TryAddItem(TEXT("BlizzardRod"), 1);
+		TryAddItem(TEXT("KnightsBroadsword"), 1);
+		TryAddItem(TEXT("SpikedBokoClub"), 1);
+		TryAddItem(TEXT("Daybreaker"), 1);
+		TryAddItem(TEXT("RoyalGuard"), 1);
+		TryAddItem(TEXT("SteelLizalShield"), 1);
+	}
 
 	// Sample food: with the current 999 stack sizes, each 5000 creates six
 	// stacks (five full stacks and one with five items). Plus apples = 25 entries.

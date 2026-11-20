@@ -12,6 +12,10 @@
 #include "Inventory/Components/HealthComponent.h"
 #include "Components/Image.h"
 #include "Components/WrapBox.h"
+#include "Components/Border.h"
+#include "Components/ScrollBox.h"
+#include "Components/HorizontalBox.h"
+#include "Engine/Texture2D.h"
 #include "UI/ItemSlotWidget.h"
 #include "Inventory/Components/InventoryComponent.h"
 #include "Inventory/Data/ItemRow.h"
@@ -27,13 +31,13 @@ void UInventoryWidget::NativeOnInitialized()
 
 	if (DamageTestButton)
 	{
-		
+
 		DamageTestButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleDamageTestButtonClicked);
 	}
 
 	if (HealTestButton)
 	{
-		
+
 		HealTestButton->OnClicked.AddUniqueDynamic(this, &UInventoryWidget::HandleHealTestButtonClicked);
 	}
 
@@ -117,6 +121,16 @@ void UInventoryWidget::NativeConstruct()
 	bCloseOnTabRelease = false;
 	bCloseOnBRelease = false;
 
+	if (APawn* Pawn = GetOwningPlayerPawn())
+	{
+		ObservedInventory = Pawn->FindComponentByClass<UInventoryComponent>();
+		if (ObservedInventory.IsValid())
+		{
+			ObservedInventory->OnInventoryChanged.RemoveAll(this);
+			ObservedInventory->OnInventoryChanged.AddUObject(this, &UInventoryWidget::HandleInventoryChanged);
+		}
+	}
+	CreateCharacterPreview();
 	SelectCategory(CurrentCategory);
 
 	if (!MoneyText) return;
@@ -135,11 +149,14 @@ void UInventoryWidget::NativeConstruct()
 	MoneyText->SetText(FText::AsNumber(BalanceToDisplay));
 }
 
-FReply UInventoryWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
-{
 
-	SetKeyboardFocus();
-	return FReply::Handled();
+void UInventoryWidget::NativeDestruct()
+{
+	if (ObservedInventory.IsValid()) ObservedInventory->OnInventoryChanged.RemoveAll(this);
+	ObservedInventory.Reset();
+	ClearItemSelection();
+	ReleaseCharacterPreview();
+	Super::NativeDestruct();
 }
 
 FReply UInventoryWidget::NativeOnPreviewKeyDown(
@@ -147,6 +164,18 @@ FReply UInventoryWidget::NativeOnPreviewKeyDown(
 	const FKeyEvent& InKeyEvent)
 {
 	const FKey Key = InKeyEvent.GetKey();
+
+	if (Key == EKeys::Enter || Key == EKeys::A)
+	{
+		if (!InKeyEvent.IsRepeat()) OpenActionMenu();
+		return FReply::Handled();
+	}
+
+	if (Key == EKeys::Y)
+	{
+		if (!InKeyEvent.IsRepeat()) SortCurrentCategory();
+		return FReply::Handled();
+	}
 
 	if (Key != EKeys::Tab && Key != EKeys::B)
 	{
@@ -298,8 +327,47 @@ void UInventoryWidget::UpdateCategoryVisuals()
 
 }
 
+void UInventoryWidget::SortCurrentCategory()
+{
+	SortedCategories.Add(CurrentCategory);
+	CurrentPageIndex = 0;
+	RebuildItemGrid(); // Rebuilding also clears selection and the detail panel.
+	SetKeyboardFocus();
+}
+
+void UInventoryWidget::SortCategoryEntries(
+	TArray<FInventoryEntry>& Entries, const UInventoryComponent& Inventory) const
+{
+	// Sort the complete category before pagination, without modifying inventory storage.
+	Entries.StableSort([&Inventory](const FInventoryEntry& Left, const FInventoryEntry& Right)
+	{
+		const FItemRow* LeftDefinition = Inventory.FindItemDefinition(Left.ItemRowName);
+		const FItemRow* RightDefinition = Inventory.FindItemDefinition(Right.ItemRowName);
+		// Entries were validated when gathered; keep a consistent order if a definition is missing.
+		if (!LeftDefinition || !RightDefinition)
+		{
+			return LeftDefinition && !RightDefinition;
+		}
+		if (LeftDefinition->SortPriority != RightDefinition->SortPriority)
+		{
+			return LeftDefinition->SortPriority < RightDefinition->SortPriority;
+		}
+		const int32 NameComparison = LeftDefinition->DisplayName.CompareTo(RightDefinition->DisplayName);
+		if (NameComparison != 0) return NameComparison < 0;
+		// Stable sorting preserves separate copies/stacks of the same item in their original order.
+		if (Left.ItemRowName != Right.ItemRowName)
+		{
+			return Left.ItemRowName.LexicalLess(Right.ItemRowName);
+		}
+		// Keep each equipment type together, with its stronger rolls first.
+		return LeftDefinition->ResolveEquipmentPower(Left.EquipmentPower)
+			> RightDefinition->ResolveEquipmentPower(Right.EquipmentPower);
+	});
+}
+
 void UInventoryWidget::RebuildItemGrid()
 {
+	ClearItemSelection();
 	TotalPages = 0;
 	UpdatePageButtons();
 
@@ -344,9 +412,14 @@ void UInventoryWidget::RebuildItemGrid()
 		if (Definition && Definition->Category == CurrentCategory) CategoryEntries.Add(Entry);
 	}
 
-	const int32 EntryCount = CategoryEntries.Num();
+	if (SortedCategories.Contains(CurrentCategory)) SortCategoryEntries(CategoryEntries, *Inventory);
 
-	TotalPages = EntryCount > 0 ? 1 + (EntryCount - 1) / ItemsPerPage : 0;
+	const int32 EntryCount = CategoryEntries.Num();
+	// Display available capacity as frames; empty frames are not inventory entries.
+	// Keep existing items visible if a designer later lowers capacity below usage.
+	const int32 SlotCount = FMath::Max(EntryCount, Inventory->GetSlotCapacity(CurrentCategory));
+
+	TotalPages = SlotCount > 0 ? 1 + (SlotCount - 1) / ItemsPerPage : 0;
 
 	CurrentPageIndex = FMath::Clamp(CurrentPageIndex, 0, FMath::Max(0, TotalPages - 1));
 
@@ -355,22 +428,10 @@ void UInventoryWidget::RebuildItemGrid()
 	//End index is exclusive: stop before reaching it
 	const int32 StartIndex = CurrentPageIndex * ItemsPerPage;
 	const int32 EndIndex = StartIndex +
-		FMath::Min(ItemsPerPage, EntryCount - StartIndex);
+		FMath::Min(ItemsPerPage, SlotCount - StartIndex);
 
 	for (int32 Index = StartIndex; Index < EndIndex; ++Index)
 	{
-		const FInventoryEntry& Entry = CategoryEntries[Index];
-
-		const FItemRow* Definition = Inventory->FindItemDefinition(Entry.ItemRowName);
-
-		if (!Definition)
-		{
-			UE_LOG(LogUIInventorySystem, Warning,
-				TEXT("Cannot display inventory: item definition not found for row name %s."),
-				*Entry.ItemRowName.ToString());
-			continue;
-		}
-
 		UItemSlotWidget* SlotWidget = CreateWidget<UItemSlotWidget>(GetOwningPlayer(), ItemSlotClass);
 		if (!SlotWidget)
 		{
@@ -379,13 +440,137 @@ void UInventoryWidget::RebuildItemGrid()
 			continue;
 		}
 
-		SlotWidget->SetItemDisplay(Definition->Icon.Get(), Entry.Quantity);
+		SlotWidget->SetEmptyDisplay();
+		if (CategoryEntries.IsValidIndex(Index))
+		{
+			const FInventoryEntry& Entry = CategoryEntries[Index];
+			if (const FItemRow* Definition = Inventory->FindItemDefinition(Entry.ItemRowName))
+			{
+				SlotWidget->SetItemDisplay(Entry.ItemRowName, *Definition, Entry.Quantity);
+				VisibleEntryIds.Add(SlotWidget, Entry.EntryId);
+				SlotWidget->OnItemClicked.BindUObject(this, &UInventoryWidget::HandleItemClicked);
+				SlotWidget->OnHoverChanged.BindUObject(this, &UInventoryWidget::HandleItemHoverChanged);
+			}
+		}
 
 		ItemGrid->AddChildToWrapBox(SlotWidget);
 	}
 }
 
+void UInventoryWidget::ClearItemSelection()
+{
+	CloseActionMenu();
+	VisibleEntryIds.Reset();
+	// Detach callbacks before removing children: removal can produce a late mouse-leave event.
+	if (ItemGrid)
+	{
+		for (UWidget* Child : ItemGrid->GetAllChildren())
+		{
+			if (UItemSlotWidget* SlotWidget = Cast<UItemSlotWidget>(Child))
+			{
+				SlotWidget->OnItemClicked.Unbind();
+				SlotWidget->OnHoverChanged.Unbind();
+				SlotWidget->SetSelected(false);
+			}
+		}
+	}
+	SelectedSlot.Reset();
+	HoveredSlot.Reset();
+	RefreshItemInfo();
+}
 
+void UInventoryWidget::HandleItemClicked(UItemSlotWidget* SlotWidget)
+{
+	if (!IsValid(SlotWidget) || !ItemGrid || ItemGrid->GetChildIndex(SlotWidget) == INDEX_NONE) return;
+	if (UItemSlotWidget* Previous = SelectedSlot.Get())
+	{
+		Previous->SetSelected(false);
+	}
+	SelectedSlot = SlotWidget;
+	SlotWidget->SetSelected(true);
+	SetKeyboardFocus(); // Keep Tab/B available after interacting with inventory content.
+	RefreshItemInfo();
+	OpenActionMenu();
+}
+
+void UInventoryWidget::HandleItemHoverChanged(UItemSlotWidget* SlotWidget, bool bHovered)
+{
+	if (ActionMenu) return;
+	if (!IsValid(SlotWidget) || !ItemGrid || ItemGrid->GetChildIndex(SlotWidget) == INDEX_NONE) return;
+	if (bHovered)
+	{
+		HoveredSlot = SlotWidget;
+	}
+	else if (HoveredSlot.Get() == SlotWidget)
+	{
+		HoveredSlot.Reset();
+	}
+	RefreshItemInfo();
+}
+
+void UInventoryWidget::RefreshItemInfo()
+{
+	if (!ItemInfoPanel || !ItemNameText || !ItemQuantityText || !ItemDescriptionText
+		|| !ItemStatRow || !ItemStatValueText) return;
+
+	UItemSlotWidget* Preview = HoveredSlot.IsValid() ? HoveredSlot.Get() : SelectedSlot.Get();
+	const APawn* PlayerPawn = GetOwningPlayerPawn();
+	const UInventoryComponent* Inventory = PlayerPawn ? PlayerPawn->FindComponentByClass<UInventoryComponent>() : nullptr;
+	const FGuid* EntryId = Preview ? VisibleEntryIds.Find(Preview) : nullptr;
+	const FInventoryEntry* Entry = Inventory && EntryId ? Inventory->FindEntry(*EntryId) : nullptr;
+	const FItemRow* Definition = Entry ? Inventory->FindItemDefinition(Entry->ItemRowName) : nullptr;
+	if (!Definition || !Entry)
+	{
+		ItemInfoPanel->SetVisibility(ESlateVisibility::Collapsed);
+		ItemNameText->SetText(FText::GetEmpty());
+		ItemQuantityText->SetText(FText::GetEmpty());
+		ItemStatValueText->SetText(FText::GetEmpty());
+		ItemStatRow->SetVisibility(ESlateVisibility::Collapsed);
+		ItemDescriptionText->SetText(FText::GetEmpty());
+		return;
+	}
+
+	ItemNameText->SetText(Definition->DisplayName);
+	RefreshItemStat(*Definition, *Entry);
+	ItemQuantityText->SetVisibility(ESlateVisibility::HitTestInvisible);
+	ItemQuantityText->SetText(FText::Format(
+		NSLOCTEXT("Inventory", "SlotQuantity", "In this slot: {0}"), FText::AsNumber(Entry->Quantity)));
+	ItemDescriptionText->SetText(Definition->Description.IsEmpty()
+		? NSLOCTEXT("Inventory", "MissingDescription", "No description available.") : Definition->Description);
+	if (ItemDescriptionScroll) ItemDescriptionScroll->ScrollToStart();
+	ItemInfoPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+}
+
+
+
+void UInventoryWidget::RefreshItemStat(const FItemRow& Definition, const FInventoryEntry& Entry)
+{
+	if (!ItemStatRow || !ItemStatIcon || !ItemStatValueText) return;
+
+	UTexture2D* Icon = nullptr;
+	FText Value;
+	switch (Definition.Category)
+	{
+	case EItemCategory::Weapon:
+		Icon = WeaponStatIcon.Get();
+		Value = FText::AsNumber(Definition.ResolveEquipmentPower(Entry.EquipmentPower));
+		break;
+	case EItemCategory::Shields:
+		Icon = ShieldStatIcon.Get();
+		Value = FText::AsNumber(Definition.ResolveEquipmentPower(Entry.EquipmentPower));
+		break;
+	case EItemCategory::Food:
+		Icon = FoodStatIcon.Get();
+		Value = FText::AsNumber(FMath::Max(0.f, Definition.HealthRestored));
+		break;
+	default:
+		ItemStatRow->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+	ItemStatIcon->SetBrushFromTexture(Icon, false);
+	ItemStatValueText->SetText(Value);
+	ItemStatRow->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
 
 // void UInventoryWidget::HandleCloseButtonClicked()
 // {

@@ -5,6 +5,8 @@
 
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "PickupAnimation.h"
 
 // Sets default values
 APickupBase::APickupBase()
@@ -49,7 +51,7 @@ bool APickupBase::TryCollect(AActor* Collector)
 
 bool APickupBase::TryInteract(AActor* Interactor)
 {
-	if (bCollected || IsActorBeingDestroyed() || 
+	if (bCollected || IsActorBeingDestroyed() ||
 		!IsValid(Interactor) || Interactor == this) return false;
 
 	bCollected = true;
@@ -75,7 +77,11 @@ void APickupBase::BeginPlay()
 	Super::BeginPlay();
 	if (PickupMesh)
 	{
-		InitialMeshLocation = PickupMesh->GetRelativeLocation();
+		InitialMeshTransform = PickupMesh->GetRelativeTransform();
+		if (const UStaticMesh* Mesh = PickupMesh->GetStaticMesh())
+		{
+			LocalMeshCenter = Mesh->GetBounds().Origin;
+		}
 	}
 
 	SetActorTickEnabled(bAnimatePickup && IsValid(PickupMesh.Get()));
@@ -88,20 +94,17 @@ void APickupBase::Tick(float DeltaTime)
 	// Animate the pickup mesh if enabled
 	if (!bAnimatePickup || !PickupMesh) return;
 
-	// Rotate around the parent component's Z axis
-	PickupMesh->AddRelativeRotation(FRotator(0.f, RotationSpeed * DeltaTime, 0.f));
-
-	// Advance through a sine cycle, measured in radians
+	SpinDegrees = FMath::Fmod(SpinDegrees + RotationSpeed * DeltaTime, 360.f);
 	const float FullCycle = 2.f * PI;
-
 	BobPhase = FMath::Fmod(BobPhase + (FullCycle * BobFrequency * DeltaTime), FullCycle);
-
 	const float HeightOffset = BobHeight * FMath::Sin(BobPhase);
 
-	FVector NewLocation = InitialMeshLocation;
-	NewLocation.Z += HeightOffset;
-
-	PickupMesh->SetRelativeLocation(NewLocation);
+	const USceneComponent* Parent = PickupMesh->GetAttachParent();
+	const FTransform RestWorld = Parent
+		? InitialMeshTransform * Parent->GetComponentTransform() : InitialMeshTransform;
+	const FTransform Animated = PickupAnimation::MakeTransform(
+		RestWorld, LocalMeshCenter, SpinDegrees, HeightOffset);
+	PickupMesh->SetWorldLocationAndRotation(Animated.GetLocation(), Animated.GetRotation());
 }
 
 

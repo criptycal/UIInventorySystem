@@ -58,7 +58,9 @@ protected:
 private:
 	bool bCollected = false;
 
-	FVector InitialMeshLocation = FVector::ZeroVector;
+	FTransform InitialMeshTransform = FTransform::Identity;
+	FVector LocalMeshCenter = FVector::ZeroVector;
+	float SpinDegrees = 0.f;
 	float BobPhase = 0.f;
 
 };

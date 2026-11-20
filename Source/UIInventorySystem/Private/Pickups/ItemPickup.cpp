@@ -10,7 +10,7 @@
 AItemPickup::AItemPickup()
 {
 	InitializePickupComponents(TEXT("PickupSphere"));
-	
+
 	// Set default values for the pickup mesh and sphere
 	PickupMesh->SetCustomDepthStencilValue(1);
 	PickupMesh->SetRenderCustomDepth(false);
@@ -58,6 +58,22 @@ void AItemPickup::OnConstruction(const FTransform& Transform)
 	PickupMesh->SetStaticMesh(Definition->WorldMesh.Get());
 }
 
+void AItemPickup::BeginPlay()
+{
+	Super::BeginPlay();
+	EnsureEquipmentPower();
+}
+
+bool AItemPickup::EnsureEquipmentPower()
+{
+	if (!ItemRow.DataTable || ItemRow.DataTable->GetRowStruct() != FItemRow::StaticStruct()) return false;
+	const FItemRow* Definition = ItemRow.DataTable->FindRow<FItemRow>(
+		ItemRow.RowName, TEXT("ItemPickup::EnsureEquipmentPower"), false);
+	if (!Definition) return false;
+	if (EquipmentPower == INDEX_NONE) EquipmentPower = Definition->RollEquipmentPower();
+	return EquipmentPower >= 0;
+}
+
 bool AItemPickup::TryCollect(AActor* Collector)
 {
 	UInventoryComponent* Inventory = Collector->FindComponentByClass<UInventoryComponent>();
@@ -78,7 +94,7 @@ bool AItemPickup::TryCollect(AActor* Collector)
 		return false;
 	}
 
-	if (!Inventory->TryAddItem(ItemRow.RowName, Quantity))
+	if (!EnsureEquipmentPower() || !Inventory->TryAddItemWithPower(ItemRow.RowName, Quantity, EquipmentPower))
 	{
 		UE_LOG(LogUIInventorySystem, Warning,
 			TEXT("%s: Collector '%s' could not add item '%s' to inventory."),
@@ -99,4 +115,14 @@ void AItemPickup::SetHighlighted(bool bHighlighted)
 	{
 		PickupMesh->SetRenderCustomDepth(bHighlighted);
 	}
+}
+
+void AItemPickup::InitializeDroppedItem(UDataTable* Definitions, FName RowName, int32 InEquipmentPower)
+{
+	ItemRow.DataTable = Definitions;
+	ItemRow.RowName = RowName;
+	Quantity = 1;
+	EquipmentPower = InEquipmentPower;
+	// Rest on the ground; no physics or animation is needed for dropped items.
+	bAnimatePickup = false;
 }
