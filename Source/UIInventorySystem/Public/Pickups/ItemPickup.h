@@ -17,7 +17,13 @@ public:
 
 	void SetHighlighted(bool bHighlighted);
 
+	// Configure between SpawnActorDeferred and FinishSpawning (before construction/BeginPlay).
+	void InitializeDroppedItem(UDataTable* Definitions, FName RowName, int32 InEquipmentPower);
+
+	int32 GetEquipmentPower() const { return EquipmentPower; }
+
 protected:
+	virtual void BeginPlay() override;
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual bool TryCollect(AActor* Collector) override;
@@ -28,5 +34,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Pickup",
 		meta = (ClampMin = "1", UIMin = "1"))
 	int32 Quantity = 1;
+
+private:
+	// Generated once in play, never rerolled by construction, focus, or failed collection.
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Pickup")
+	int32 EquipmentPower = INDEX_NONE;
+
+	bool EnsureEquipmentPower();
 
 };

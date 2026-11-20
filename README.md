@@ -24,7 +24,7 @@ The project began with Unreal's Third Person template while following *Unreal En
 - Select Weapons, Shields, or Food categories, with a matching title, selection highlight, and mouse-hover feedback.
 - Retain temporary damage/healing buttons, each changing health by half a heart; their parent is currently collapsed to hide them.
 
-The current UI contains the inventory heading, currency display, background blur, heart bar, item grid, a shared footer, and Adventure Log/System navigation prompts. Only Back has implemented behavior among these prompts; Sort, Select, Rotate, Adventure Log, and System are visual placeholders. Item selection, drag-and-drop, equipment, and other complete inventory features are still future work.
+The current UI contains the inventory heading, currency display, background blur, heart bar, item grid, a shared footer, and Adventure Log/System navigation prompts. Hovering an inventory slot previews its details, and left-clicking selects that slot. Back closes the inventory and Y sorts the current category. Clicking an occupied slot opens its action menu; keyboard A/Enter reopens the selected slot. Eat, Drop, and Delete work on one item at a time. Equip attaches weapons and shields to the character and updates the draggable 3D inventory preview. Adventure Log and System remain future work.
 
 ## How C++ and the editor work together
 
@@ -32,7 +32,7 @@ A native class defines behavior and exposes selected properties to Unreal. A Blu
 
 | C++ class | Editor connection | Responsibility |
 | --- | --- | --- |
-| `AUIInventorySystemCharacter` | `BP_ThirdPersonCharacter` | Owns currency, health, inventory, and interaction components; forwards input and adds the outline material to its camera. |
+| `AUIInventorySystemCharacter` | `BP_ThirdPersonCharacter` | Owns currency, health, inventory, equipment, and interaction components; forwards input and adds the outline material to its camera. |
 | `AUIInventorySystemPlayerController` | `BP_ThirdPersonPlayerController` defaults | Registers input mappings; owns the inventory and gameplay HUD; switches visibility, input mode, and cursor state. |
 | `UCurrencyComponent` | Inherited component on the character | Owns the balance and validates additions/spending. |
 | `UHealthComponent` | Inherited component on the character | Owns maximum/current health, validates damage/healing, initializes full health, and broadcasts changes. |
@@ -41,10 +41,10 @@ A native class defines behavior and exposes selected properties to Unreal. A Blu
 | `UInventoryComponent` | Inherited component on the character | Stores entries, validates item definitions, fills existing stacks, and creates additional stacks. |
 | `APickupBase` | Abstract parent of item and money pickups | Shares components, rotation/bobbing, collection guards, and successful-pickup destruction. |
 | `AItemPickup` | `BP_ItemPickup` | Reads an item row, supplies its mesh, collects through interaction, and toggles mesh highlighting. |
-| `FItemRow` / `FInventoryEntry` | Item definitions / runtime entries | Separate shared item data from each stack's row name and quantity. |
+| `FItemRow` / `FInventoryEntry` | Item definitions / runtime entries | Separate shared definitions from each stack's identity, quantity, and rolled equipment power. |
 | `UInteractionComponent` | Inherited component on the character | Finds nearby visible items, supports mouse-wheel cycling and a validated manual selection, broadcasts focus changes, and rechecks focus when interacting. |
 | `UInteractionPromptWidget` | Parent of `WBP_InteractionPrompt`, embedded in `WBP_PlayerHUD` | Shows or hides the pickup prompt in response to focus changes. |
-| `UItemSlotWidget` | Parent of `WBP_ItemSlot` | Displays the item icon and a quantity when greater than one. |
+| `UItemSlotWidget` | Parent of `WBP_ItemSlot` | Displays the item icon and stack quantity for every category; power appears in the details panel. |
 | `UInventoryWidget` | Parent of `WBP_Inventory` | Handles UI keyboard input, currency text, category selection and hover visuals, and health test-button clicks. |
 | `UHealthBarWidget` | Parent of `WBP_HealthBar` | Creates heart widgets, subscribes to health changes, updates their fill, and removes its subscription during destruction. |
 | `UHeartWidget` | Parent of `WBP_Heart` | Chooses the texture for one heart. |
@@ -144,7 +144,7 @@ The footer is anchored bottom-right, aligned `(1, 1)`, positioned at `(-60, -30)
 
 Adventure Log and System use top-center anchors and alignment `(0.5, 0.5)`, with positions `(-250, 125)` and `(250, 125)`. Adventure Log has a 200-unit width to accommodate its longer label, a 32-by-32 L icon, and the same italic font styling as System. The currency box uses a top-right anchor, alignment `(1, 0)`, and position `(-60, 56)` to separate it from System. These offsets establish the current layout; narrow windows still need visual checks for overlap.
 
-The controller-style icons currently follow the visual reference. Sort and Select still need their actions and item selection behavior, Rotate needs a character preview, and the header prompts need destination screens before their actions can be implemented in C++.
+The controller-style icons currently follow the visual reference. Keyboard Y activates Sort; the footer is a visual key hint, not a clickable button. Keyboard A or Enter opens the selected slot's action menu; clicking a populated slot also opens it. Left-drag rotates the character preview. The Rotate footer key is not bound yet; the header prompts still need destination screens.
 
 ### Category selection and hover feedback
 
@@ -170,15 +170,33 @@ Buttons are non-focusable and their background brushes use No Draw Type, leaving
 
 ### Inventory pages and test samples
 
-`UInventoryWidget::RebuildItemGrid()` first gathers valid occupied entries in the selected category into a temporary array. It calculates `TotalPages`, clamps `CurrentPageIndex`, and creates widgets only for the current page's range. `ItemsPerPage` is 20. Empty categories disable both arrows; the first and last pages disable Previous and Next respectively. Selecting a category resets to page zero. Opening the inventory also resets the current category's page through `SelectCategory()`.
+`UInventoryWidget::RebuildItemGrid()` first gathers valid occupied entries in the selected category into a temporary array. It uses the category's slot capacity to calculate `TotalPages`, clamps `CurrentPageIndex`, and creates widgets only for the current page's range. Occupied entries come first, followed by empty frames created with `SetEmptyDisplay()`. These placeholders have no icon, badge, hover preview, or selection and are never added to the component's Entries array. `ItemsPerPage` is 20. The saved player capacity is twenty per category (four rows of five), so both arrows are disabled; larger capacities still paginate. Existing entries remain visible if capacity is later reduced below usage. Selecting a category resets to page zero. Opening the inventory also resets the current category's page through `SelectCategory()`.
 
 The grid uses 112-by-112 slots with 12-unit gaps and an explicit Wrap Size of 608. `ItemPageSizeBox` is 608 by 484 at canvas position (150, 420), accommodating five columns and four rows. It replaces the old ScrollBox. `PreviousPageButton` and `NextPageButton` sit beside the grid and bind to native click handlers in `NativeOnInitialized()`. They are non-focusable; their centered text arrows do not intercept pointer input.
 
-Entries currently retain insertion order within each category. Existing stacks are filled in place; new entries are appended. `SortPriority` is present in the item definition but is not applied yet, and the Sort footer action remains a placeholder. Pagination changes presentation, not inventory storage or capacity.
+Categories initially display insertion order. Press **Y** while the inventory is open to sort the entire current category by ascending `FItemRow::SortPriority` (smaller numbers first), then localized display name alphabetically. Row name breaks ties between different definitions. Within the same equipment type, stronger power rolls appear first; equal rolls retain their relative order. Sorting happens before pagination, returns to page one, and clears selection/details. Holding Y does not repeatedly rebuild the grid.
 
-The saved character Blueprint enables **Add Sample Items** and overrides all three category capacities to 40 for testing. Current samples create 36 weapon entries, 25 shield entries, and 25 food stacks using the current data table. Each of the four non-apple food types receives 5000 units, producing six stacks at a maximum stack size of 999; apples add one stack. SteelLizalShield remains limited to one owned item. Disable Add Sample Items for an empty starting inventory; category capacities are separate settings and remain at their configured values.
+`SortedCategories` remembers which categories have been sorted for this widget's lifetime, including page changes and reopening the cached inventory widget. Other categories keep their existing display order until sorted. `SortCategoryEntries()` sorts a temporary copy; the component's stored entries, quantities, stack limits, and capacity remain unchanged. Matching equipment stacks merge during addition, not sorting. Change Sort Priority in `DT_Items` to author a different order.
 
-The user manually tested an expanded dataset of 125 entries per category (seven pages) and reported it working. That larger dataset and its 140-slot capacity overrides have been reverted to the smaller test configuration above. Slot borders, hover markers, quantity-badge styling, item descriptions, and the Sort action remain follow-up work.
+The saved character Blueprint has **Add Sample Items disabled**, so new Play sessions start with an empty inventory. The optional sample generator grants twelve independently rolled copies of each weapon and shield type; matching rolls merge, so the occupied slot count varies. Each of the four non-apple food types receives 5000 units; apples receive 23. Capacity and ownership limits can reject sample requests. All three saved character capacities are 20 (60 total); the native fallback is 10 per category. Equipment rows now allow stacks of 999 with no total ownership cap, including SteelLizalShield. Capacity settings are independent of sample generation. Item definitions and world pickups remain available for normal collection.
+
+The user manually tested an expanded dataset of 125 entries per category (seven pages) and reported it working. That larger dataset and its 140-slot capacity overrides have been reverted to the smaller test configuration above.
+
+### Slot appearance, selection, and item details
+
+`WBP_ItemSlot` supplies a rounded dark `SlotOuterFrame` and a light `SlotBackground` outline inset by three UI units, leaving a narrow gap between the two edges. The icon and bottom-right `QuantityBadge` sit above this frame. The badge sizes to its content so three-digit stacks fit. Every occupied slot displays quantity, including one; empty slots have no badge. Attack and guard power appear only in the details panel.
+
+`UItemSlotWidget` handles mouse enter/leave and left-click events in C++. Hover brightens the outline; selection adds four white corner brackets drawn by `NativePaint()`. The normal brush comes from Designer, and hover/selection colors are native class defaults editable in the widget Blueprint. Child visuals do not intercept pointer input. No Tick or Blueprint event graph is required for this behavior.
+
+Slots notify `UInventoryWidget` through native delegates. The inventory keeps weak references to the hovered and selected **slot instances** and maps them to entry IDs, so different power variants and overflow stacks remain distinct. Hover previews another item's details temporarily; leaving restores the selected item's details. With no selection or hover, the panel is collapsed. Changing page/category or closing the inventory clears selection and detaches the old callbacks before removing the slots.
+
+The details panel uses the same dark outer edge and inset light frame. `ItemTitleDivider` draws the thin white line under the item name, and `ItemInfoBlueAccent` draws the vertical blue line along the left side. These are non-interactive Designer decorations; the native panel binding still controls the visibility of the whole group. This frame treatment and an authored description were visually checked in a 1280-by-720 Play session.
+
+`WBP_Inventory` contains the native bindings `ItemInfoPanel`, `ItemNameText`, `ItemQuantityText`, `ItemDescriptionText`, `ItemDescriptionScroll`, `ItemStatRow`, `ItemStatValueText`, and `ItemStatIcon`. C++ looks up `FItemRow` through the character's InventoryComponent and displays its name, description, and category-specific information. Long descriptions wrap and scroll inside the panel. All 11 current rows in `DT_Items` have original flavor descriptions, editable through their Description fields. Empty fields on future items show "No description available." Hovering only previews details. Clicking selects that entry and opens its action menu; actions are performed only after choosing a menu option.
+
+For weapons, the details panel shows `/Game/Inventory/Misc/ICO_Sword` beside the selected stack's attack power. Shields show their rolled guard power with `Misc/ICO_Shield`; food shows health restored with `Misc/ICO_heartFull`. Every category also shows the selected stack's quantity. The icon textures are assigned in WBP_Inventory Class Defaults (Weapon/Shield/Food Stat Icon). Base powers in `DT_Items` are Blizzard Rod 10, Knight's Broadsword 26, Spiked Boko Club 12, Daybreaker 60, Royal Guard 70, and Steel Lizal Shield 35. New equipment rolls within base power +/- `PowerVariance` (default 3). Starter healing remains Apple 1, Fortified Pumpkin 2.5, Hydromelon 1.5, Mighty Bananas 3, and Spicy Pepper 0.5 hearts. Eat uses HealthRestored; weapon damage and shield blocking remain future work.
+
+`SetItemDisplay()` accepts the item definition by const reference and copies its icon plus the entry quantity. The details panel resolves the selected or hovered entry by ID and displays its actual `EquipmentPower`. `AttackPower` and `GuardPower` in the table are base values for generation, not the final power of every copy. Equipped-versus-selected comparisons, durability, and applying combat stats remain future work.
 
 The health test buttons remain inside `HorizontalBox_108`, whose visibility is **Collapsed**. To use them again, set that parent to **Not Hit-Testable (Self Only)**, compile and save the widget, and start a fresh Play session. Their existing C++ handlers remain available.
 
@@ -205,15 +223,15 @@ The sphere collision and static-mesh components are created in C++. The editor s
 
 ## Item interaction and outline
 
-`FItemRow` holds the display name, description, category, icon, world mesh, maximum stack size, maximum owned quantity, and sort priority. `UInventoryComponent::TryAddItem()` fills compatible stacks before splitting the remaining quantity into new entries. Items with maximum stack size one occupy separate slots. The pickup and inventory must reference the same definitions table.
+`FItemRow` holds the display name, description, category, icon, world mesh, maximum stack size, maximum owned quantity, sort priority, base equipment powers, `PowerVariance`, and food healing in hearts. Equipment rolls between base power minus/plus variance, clamped at zero. The default variance is 3; set it to zero for fixed power. `TryAddItem()` generates one roll for a batch of identical copies. Call it once per copy for independent rolls, as the optional sample generator does. `TryAddItemWithPower()` accepts an existing roll and fills only stacks matching both row name and power. Food ignores equipment power and stacks by row. Maximum stack size and category capacity still apply. The pickup and inventory must reference the same definitions table.
 
-Inventory entries remain in one array, with configurable category capacities defaulting to 5 weapon slots, 8 shield slots, and 7 food slots. Each stack consumes one slot. Before modifying any entries, `TryAddItem()` checks both available stack space and the slots needed for the entire request. Requests that do not fit are rejected without partially collecting the pickup.
+Inventory entries remain in one array, with configurable category capacities. The player Blueprint sets 20 weapon slots, 20 shield slots, and 20 food slots (native fallback: 10 each). Each stack consumes one slot. Before modifying any entries, `TryAddItem()` checks both available stack space and the slots needed for the entire request. Requests that do not fit are rejected without partially collecting the pickup.
 
 `MaxOwnedQuantity` limits the total quantity of one item row across all stacks; zero disables this additional limit. For example, setting both `MaxStackSize` and `MaxOwnedQuantity` to 999 allows one stack of up to 999 apples, without an overflow stack. At 998 apples, a pickup of two is rejected in full; a pickup of one succeeds.
 
 The native interaction range defaults to **200 Unreal units**, with a **1000-unit aiming trace**. The range is measured from the character's center to the mesh hit point. `WBP_PlayerHUD` places its crosshair at normalized screen coordinates **(0.5, 0.35)**. C++ deprojects that same position into a world-space ray, so the raised crosshair and targeting agree without changing the camera. The crosshair hides with the HUD when the inventory opens.
 
-`APickupBase::TryInteract()` guards against duplicate collection, calls the subclass's `TryCollect()`, and disables collision and destroys the actor only after success. `AMoneyPickup` opts into overlap collection. `AItemPickup` waits for explicit interaction: its sphere ignores Visibility, while its mesh uses query-only collision and blocks Visibility. Both share mesh rotation and sine-wave bobbing, controlled by `bAnimatePickup`. Set **Animate Pickup** before Play; when disabled, `BeginPlay()` disables the pickup's animation tick. This setting does not enable physics or gravity simulation.
+`APickupBase::TryInteract()` guards against duplicate collection, calls the subclass's `TryCollect()`, and disables collision and destroys the actor only after success. `AMoneyPickup` opts into overlap collection. `AItemPickup` waits for explicit interaction: its sphere ignores Visibility, while its mesh uses query-only collision and blocks Visibility. Both share mesh rotation and sine-wave bobbing, controlled by `bAnimatePickup`. Animation preserves the initial mesh pose, spins around world Z through the mesh bounds center, and bobs vertically in world centimeters. Tilting a placed pickup no longer tilts its spin axis, and imported off-center pivots no longer make the geometry orbit. Actor/root collision placement remains fixed. Set **Animate Pickup** before Play; when disabled, `BeginPlay()` disables the pickup's animation tick. This setting does not enable physics or gravity simulation.
 
 The item input and focus flow is:
 
@@ -380,7 +398,10 @@ For changes to reflected property types, native inheritance, or default subobjec
 
 ## Verification and remaining work
 
-On November 10, 2026, source review checked category filtering before pagination, empty categories, page clamping, button boundary guards, and category resets. The user reported navigation working with the seven-page test dataset. The latest local UnrealBuildTool log reports a successful build in 7.95 seconds; its output DLL is newer than the restored sample-data source. No new build or Play session was run as part of the commit checkpoint. The saved widget layout and category capacities were inspected through the editor tools. Rounded slot styling and hover effects are not yet implemented.
+On November 10, 2026, the pickup animation and food/shield statistics update built successfully (Development Editor, 27.29 seconds). The targeted `UIInventorySystem.Pickups.WorldUpAnimation` automation test passed, covering a tilted pose, off-center geometry, nonuniform scale, and full-turn return. Editor simulation showed upright shields rotating without tumbling. Both inventory widgets compiled; a 1280-by-720 Play check verified shield guard badges and the shield detail icon, apple healing of 0.5 hearts, pumpkin healing of 1 heart, and unchanged food quantities. The temporary sample inventory was disabled again and the character Blueprint saved.
+
+
+On November 10, 2026, source review checked category filtering before pagination, empty categories, page clamping, button boundary guards, and category resets. The user reported navigation working with the seven-page test dataset. A subsequent change added rounded slots, quantity badges, hover/selection, and an item-details panel. The full Development Editor C++ build succeeded in 64.37 seconds, and both widget assets compiled and saved against the rebuilt native classes. A 1280-by-720 Play session verified hover previews, persistent clicked corner markers, restoring selected details after hovering another item, separate quantities for 999- and 5-item stacks of the same food, page/category selection resets, and B/Tab closing and reopening. The targeted log check found no widget binding, Blueprint, or script errors; the sample-data warning reports the expected 86 entries. Empty-description fallback was verified; long authored descriptions and additional screen sizes still need visual checks.
 
 On November 9, 2026, the user confirmed wider focus and mouse-wheel cycling working in Play. A subsequent audit verified the Axis1D action, Mouse Wheel Axis mapping, character action assignment, 200-unit range, 0.06 focus radius, and crosshair anchors. The audit corrected the wheel binding from Started to Triggered so consecutive nonzero input updates can be processed. After closing Unreal Editor to release its DLL lock, the final Development Editor / Win64 build succeeded in 23.72 seconds. The final binding correction was compiled and linked, but a new Play test after that correction has not been recorded. These observations are manual validation, not an automated regression suite.
 
@@ -400,12 +421,12 @@ To repeat the health check, first restore the test-button parent's visibility as
 
 Still to implement:
 
-- Gameplay damage sources (such as an enemy), healing items, and death/revival rules.
+- Gameplay damage sources (such as an enemy) and death/revival rules.
 - Runtime maximum-health changes and corresponding heart-slot rebuilding.
 - Subscribing the currency text to the existing `OnBalanceChanged` delegate.
-- Item selection, equipment, consumption, removal, and live grid-change notifications.
+- Combat/blocking behavior for equipped items and keyboard/gamepad navigation between item slots.
 - Profile the outline's GPU cost at the intended gameplay resolutions.
-- Sort/Select actions, a rotatable character preview, and Adventure Log/System screens with C++ navigation.
+- Adventure Log/System screens with C++ navigation.
 - Configurable UI key bindings and gamepad input, with prompts matching the active controls.
 - Save/load, persistence across character replacement, and multiplayer replication.
 
@@ -437,3 +458,33 @@ Docs/                           Earlier learning notes and UI guide
 The template's combat, platforming, and side-scrolling examples are also retained. Notes in `Docs/` record earlier stages and can describe superseded plans; this README summarizes the current implementation.
 
 Unreal `.uasset` and `.umap` files use **Git LFS**. Source, content, configuration, and the `.uproject` are tracked. Generated folders (`Binaries`, `Intermediate`, `Saved`, `DerivedDataCache`), generated solution files, and local IDE/assistant settings are excluded and recreated locally as needed.
+
+## Item action menu
+
+The native `UItemActionMenuWidget` builds its presentation in C++/Slate, so no new Widget Blueprint or graph is required. It opens on an occupied slot click (or A/Enter for the selected slot). Up/Down chooses an option; Enter/A activates it. B/Esc or clicking outside closes the menu; Tab closes the inventory. Empty slots do not open a menu. Equip is available for weapons and shields and updates both the gameplay character and the inventory preview.
+
+- **Eat:** consumes one food item and heals through HealthComponent, clamped to maximum health. Full health or invalid healing data leaves the food untouched and displays a message.
+- **Drop:** places one native ItemPickup on nearby clear ground in front of the character. Mesh-bounds sweeps reject blocked placements. Failure preserves the inventory item. The pickup retains the same data table, row, and equipment power, can be collected normally, and stays still without physics or bobbing. Recollecting does not reroll power and merges into a matching stack when space is available.
+- **Delete:** asks for confirmation, then permanently removes one item from the selected stack in the current play session. There is no undo; Cancel keeps it.
+
+`InventoryActions.cpp` owns Eat, Drop, and Delete; `EquipmentComponent.cpp` owns Equip. Each FInventoryEntry has an EntryId identifying a particular stack/copy, so sorted slots and identical swords target the correct entry. InventoryWidgetActions maps visible slots to these IDs. Successful inventory mutations broadcast OnInventoryChanged; the open inventory rebuilds its current category, clamps pagination, and closes any stale menu. Removing the last item in a stack restores an empty frame. Health widgets continue using their existing health-change subscription.
+
+Food healing amounts are fixed editable values in DT_Items, not rerolled each time food is eaten. Inventory content and dropped actors currently last only for the current game session; save/load and multiplayer authority are still future work.
+
+Equipment power is generated once per new world pickup. Failed collection, focusing, UI refreshes, and drop/recollect do not reroll it. An equipment pickup with Quantity greater than one represents identical copies with the same power. To place independently rolled copies, use separate pickup actors. Entries created before power was introduced fall back to their row's base power rather than rerolling while displayed.
+
+Validation (November 13, 2026): Development Editor build passed (54.78 seconds). `UIInventorySystem.Inventory.EquipmentStacks` and `UIInventorySystem.Inventory.ItemActions` passed. Coverage includes same-type/equal-power merging, different-power and different-type separation, stack/category/ownership limits, food stacking, sword/shield roll bounds, failed-pickup roll stability, equipment drop/recollect preservation, and deleting exactly one copy.
+
+Both inventory widgets compiled and were checked in Play: Daybreaker quantity 2 displayed guard power 62, another Daybreaker stack of 3 displayed power 59, and a Knight's Broadsword stack of 3 displayed attack power 23. Slot badges displayed quantities throughout. Temporary samples were disabled again, PIE stopped, and the assets saved.
+
+Validation (November 10, 2026): Development Editor build passed. `UIInventorySystem.Inventory.ItemActions` automation passed in an isolated world, covering full-health rejection, clamped healing, stack identity/removal, invalid actions, failed drops and a drop/recollect round trip. Play checks verified the modal, keyboard controls, disabled Equip, Delete confirmation and quantity updates, weapon dropping, and heart updates after eating. Temporary samples were disabled and health test buttons hidden again afterward.
+
+## Equipment and character preview
+
+The character creates EquipmentComponent plus two static mesh components attached to WeaponSocket and ShieldSocket on its skeletal mesh. The sockets are authored on the mannequin assets in the editor. Equip stores a weapon or shield inventory entry ID without consuming quantity, preserving the selected stack's rolled power. OnEquipmentChanged refreshes the character's meshes from the matching item definitions. Removing the last copy clears that equipment slot. Weapon damage, shield blocking, and equipment-specific animation poses remain future work.
+
+WBP_Inventory supplies CharacterPreviewImage with M_CharacterPreview as its brush. InventoryWidgetPreview.cpp spawns a transient AInventoryCharacterPreview, copies the player's skeletal mesh/materials, plays its configured idle animation, and subscribes to equipment changes. Separate preview weapon/shield meshes attach to the same sockets. Closing the widget removes subscriptions and destroys the preview actor.
+
+The scene capture uses a 1024-by-1024 render target and a square 680-by-680 image to avoid stretching. Its wider 72.1-degree horizontal field of view leaves room for held equipment. Camera distance/height and key/fill light intensity are editable through WBP_Inventory defaults. Left-drag rotates the preview; the details panel and action menu do not start rotation.
+
+Validation (November 20, 2026): the local build log reports success. The user confirmed equipment, preview rotation, and corrected framing after rebuilding. EquipmentStacks, ItemActions, and WorldUpAnimation automation tests all passed against that build. These tests cover inventory actions, stacking, and pickup motion; equipment attachment and preview appearance were checked in Play.

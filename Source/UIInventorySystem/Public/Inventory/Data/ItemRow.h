@@ -41,5 +41,52 @@ struct UIINVENTORYSYSTEM_API FItemRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	int32 SortPriority = 0;
 
+	// Base attack power used by weapon items; this does not apply combat damage.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Weapon",
+		meta = (ClampMin = "0", UIMin = "0"))
+	int32 AttackPower = 0;
+
+	// Base shield guard strength; blocking gameplay is implemented separately.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Shield",
+		meta = (ClampMin = "0", UIMin = "0"))
+	int32 GuardPower = 0;
+
+	// Equipment rolls once when created; food does not use this value.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Equipment",
+		meta = (ClampMin = "0", ClampMax = "1000", UIMin = "0"))
+	int32 PowerVariance = 3;
+
+	bool HasEquipmentPower() const
+	{
+		return Category == EItemCategory::Weapon || Category == EItemCategory::Shields;
+	}
+
+	int32 GetBaseEquipmentPower() const
+	{
+		return HasEquipmentPower()
+			? FMath::Max(0, Category == EItemCategory::Weapon ? AttackPower : GuardPower) : 0;
+	}
+
+	int32 ResolveEquipmentPower(int32 StoredPower) const
+	{
+		return HasEquipmentPower() ? (StoredPower >= 0 ? StoredPower : GetBaseEquipmentPower()) : 0;
+	}
+
+	int32 RollEquipmentPower() const
+	{
+		if (!HasEquipmentPower()) return 0;
+		const int64 Base = GetBaseEquipmentPower();
+		const int64 Variance = FMath::Clamp(PowerVariance, 0, 1000);
+		const int32 Minimum = static_cast<int32>(FMath::Max<int64>(0, Base - Variance));
+		const int32 Maximum = static_cast<int32>(FMath::Min<int64>(MAX_int32, Base + Variance));
+		// Roll an offset to avoid overflow near MAX_int32.
+		return Minimum + FMath::RandRange(0, Maximum - Minimum);
+	}
+
+	// HealthComponent uses hearts: 1 = a full heart, 0.5 = half a heart.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item|Food",
+		meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float HealthRestored = 0.f;
+
 
 };

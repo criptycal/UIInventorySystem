@@ -17,6 +17,8 @@ class UInventoryComponent;
 class UInteractionComponent;
 class UMaterialInterface;
 class AItemPickup;
+class UEquipmentComponent;
+class UStaticMeshComponent;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -43,10 +45,29 @@ class AUIInventorySystemCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInventoryComponent> InventoryComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment",
+		meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UEquipmentComponent> EquipmentComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment",
+		meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStaticMeshComponent> EquippedWeaponMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Equipment",
+		meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStaticMeshComponent> EquippedShieldMesh;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInteractionComponent> InteractionComponent;
 
 protected:
+
+	void RefreshEquipmentVisuals();
+
+	void UpdateEquipmentMesh(
+		UStaticMeshComponent* MeshComponent,
+		const FGuid& EntryId
+	);
 
 	/** Jump Input Action */
 	UPROPERTY(EditAnywhere, Category="Input")
@@ -90,7 +111,7 @@ protected:
 public:
 
 	/** Constructor */
-	AUIInventorySystemCharacter();	
+	AUIInventorySystemCharacter();
 
 	UFUNCTION(BlueprintPure, Category = "Currency")
 	UCurrencyComponent* GetCurrencyComponent() const;
@@ -109,7 +130,7 @@ protected:
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	
+
 
 protected:
 

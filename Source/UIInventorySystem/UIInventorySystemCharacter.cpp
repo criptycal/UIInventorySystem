@@ -17,15 +17,18 @@
 #include "Inventory/Components/InventoryComponent.h"
 #include "Interaction/Components/InteractionComponent.h"
 #include "Materials/MaterialInterface.h"
+#include "Inventory/Components/EquipmentComponent.h"
 #include "Pickups/ItemPickup.h"
-
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Inventory/Data/ItemRow.h"
 
 
 AUIInventorySystemCharacter::AUIInventorySystemCharacter()
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
+
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -62,8 +65,28 @@ AUIInventorySystemCharacter::AUIInventorySystemCharacter()
 
 	InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 
+	EquipmentComponent = CreateDefaultSubobject<UEquipmentComponent>(TEXT("EquipmentComponent"));
 
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
+	EquippedWeaponMesh =
+		CreateDefaultSubobject<UStaticMeshComponent>(TEXT("EquippedWeaponMesh"));
+
+	EquippedWeaponMesh->SetupAttachment(GetMesh(), TEXT("WeaponSocket"));
+	EquippedWeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	EquippedWeaponMesh->SetGenerateOverlapEvents(false);
+	EquippedWeaponMesh->SetCanEverAffectNavigation(false);
+
+	EquippedShieldMesh =
+		CreateDefaultSubobject<UStaticMeshComponent>(TEXT("EquippedShieldMesh"));
+
+	EquippedShieldMesh->SetupAttachment(GetMesh(), TEXT("ShieldSocket"));
+	EquippedShieldMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	EquippedShieldMesh->SetGenerateOverlapEvents(false);
+	EquippedShieldMesh->SetCanEverAffectNavigation(false);
+
+
+
+
+	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character)
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
 
@@ -85,7 +108,7 @@ UInventoryComponent* AUIInventorySystemCharacter::GetInventoryComponent() const
 void AUIInventorySystemCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) 
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// Jumping
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
@@ -151,10 +174,10 @@ void AUIInventorySystemCharacter::DoMove(float Right, float Forward)
 		// get forward vector
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 
-		// get right vector 
+		// get right vector
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		// add movement 
+		// add movement
 		AddMovementInput(ForwardDirection, Forward);
 		AddMovementInput(RightDirection, Right);
 	}
@@ -201,6 +224,14 @@ void AUIInventorySystemCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (IsValid(EquipmentComponent.Get()))
+	{
+		EquipmentComponent->OnEquipmentChanged.AddUObject(
+			this, &AUIInventorySystemCharacter::RefreshEquipmentVisuals);
+	}
+
+	RefreshEquipmentVisuals();
+
 	if (!IsValid(ItemOutlineMaterial.Get()))
 	{
 		UE_LOG(LogUIInventorySystem, Warning, TEXT("%s: ItemOutlineMaterial is not set. Please assign a valid material in the editor."), *GetNameSafe(this));
@@ -246,6 +277,11 @@ void AUIInventorySystemCharacter::EndPlay(const EEndPlayReason::Type EndPlayReas
 	}
 
 	HandleOutlineFocusChanged(nullptr); // Clear any outline effect when the character is destroyed or the game ends
+
+	if (IsValid(EquipmentComponent.Get()))
+	{
+		EquipmentComponent->OnEquipmentChanged.RemoveAll(this);
+	}
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -256,4 +292,43 @@ void AUIInventorySystemCharacter::CycleFocus(const FInputActionValue& Value)
 	if (FMath::IsNearlyZero(InputValue)) return;
 	const int32 Direction = (InputValue > 0.0f) ? 1 : -1;
 	InteractionComponent->CycleFocusedItem(Direction);
+}
+
+void AUIInventorySystemCharacter::RefreshEquipmentVisuals()
+{
+	if (!IsValid(EquipmentComponent.Get())) return;
+	UpdateEquipmentMesh(
+		EquippedWeaponMesh.Get(),
+		EquipmentComponent->GetEquippedWeaponId());
+	UpdateEquipmentMesh(
+		EquippedShieldMesh.Get(),
+		EquipmentComponent->GetEquippedShieldId());
+}
+
+void AUIInventorySystemCharacter::UpdateEquipmentMesh(
+	UStaticMeshComponent* MeshComponent,
+	const FGuid& EntryId)
+{
+	if (!IsValid(MeshComponent)) return;
+
+	UStaticMesh* MeshToDisplay = nullptr;
+
+	if (IsValid(InventoryComponent.Get()) && EntryId.IsValid())
+	{
+		const FInventoryEntry* Entry =
+			InventoryComponent->FindEntry(EntryId);
+
+		if (Entry)
+		{
+			const FItemRow* Definition =
+				InventoryComponent->FindItemDefinition(Entry->ItemRowName);
+
+			if (Definition)
+			{
+				MeshToDisplay = Definition->WorldMesh.Get();
+			}
+		}
+	}
+
+	MeshComponent->SetStaticMesh(MeshToDisplay);
 }

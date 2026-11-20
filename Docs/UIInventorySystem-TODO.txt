@@ -1,4 +1,4 @@
-﻿UIInventorySystem - Inventory development TODO
+UIInventorySystem - Inventory development TODO
 Latest planning update: 2026-11-10 (see PAGINATION CHECKPOINT at the end).
 Earlier dated notes are historical; their pause instructions and status are superseded by subsequent work.
 Historical update: 2026-10-22
@@ -208,9 +208,115 @@ PAGINATION CHECKPOINT - 2026-11-10
 [x] User tested seven pages per category and reported navigation working.
 [x] Restore smaller samples: 36 weapons, 25 shields, 25 food stacks; capacities 40.
 [x] Refactor interaction queries and add the character-facing eligibility check.
-[ ] NEXT: polish WBP_ItemSlot rounded background and gray outline.
-[ ] Add native slot-hover feedback and white corner markers.
-[ ] Style the quantity badge for three digits.
-[ ] Implement inventory-hover item information, then reuse it for world focus.
-[ ] Implement sorting; currently category entries retain insertion order.
+[x] Polish WBP_ItemSlot rounded background and gray outline.
+[x] Add native slot-hover feedback and selected white corner markers.
+[x] Style the quantity badge for three digits.
+[x] Implement inventory-hover and selected-item information in C++.
+[x] Populate all 11 item DataTable descriptions; empty future rows use a fallback.
+[ ] Reuse item information for world focus (separate from inventory hover).
+[x] Verify new selection/hover behavior in a rebuilt editor and Play session.
+    Full Development Editor build succeeded (64.37s); both widget assets compiled.
+    Tested hover/selection, 999/5 stack details, page/category resets, and B/Tab.
+[ ] Check long authored descriptions and additional viewport sizes.
+[x] Add Y sorting per category: priority, display name, and row-name tie-break.
+    Sort the display copy before pagination; reset to page one and clear selection.
+    Preserve quantities, duplicate weapons, and the component's stored entry order.
+[x] Build and Play-check sorting (2026-11-10, Development Editor build 94.12s).
+    Temporarily reversed weapon priorities: Y reordered both pages, reset page two
+    to page one, and cleared selection. Verified category/reopen persistence,
+    separate weapon slots, food stack quantities, and B close / Tab reopen.
+    Restored and verified the original DataTable rows after testing.
+[x] Disable Add Sample Items on BP_ThirdPersonCharacter after sorting tests.
+    Compiled and saved the Blueprint; defaults verified: no starting entries.
+    Keep optional sample generator, item definitions, pickups, and capacities.
+[x] Add editable AttackPower to FItemRow and populate all three weapon rows.
+    Blizzard Rod 10, Knight's Broadsword 26, Spiked Boko Club 12.
+[x] Show weapon attack values on slots and beside Misc/ICO_Sword in the details.
+    Food keeps quantity badges; shield display remains unchanged.
+[x] Build and Play-check weapon stats (2026-11-10, Development Editor 42.70s).
+    Both widget Blueprints compiled. Visually verified all three attack values,
+    matching slot/details values, pagination, and category-specific visibility.
+    Temporary samples disabled again; saved character defaults have no entries.
+[ ] Add equipment state before implementing equipped-versus-selected comparison.
 Pickup animation, sound, and the rotating preview modal remain deferred above.
+
+======================================================================
+PICKUP ANIMATION AND CATEGORY STATS - 2026-11-10
+======================================================================
+[x] Spin around world up through the mesh bounds center, preserving its starting pose.
+[x] Bob vertically in world centimeters, independent of actor tilt and scale.
+[x] Keep Animate Pickup = false for manually placed market fruit.
+[x] Add shield GuardPower and food HealthRestored (heart units) to FItemRow.
+[x] Populate all three shield and five food rows with editable starter values.
+[x] Use Misc sword/shield/heart icons with category-specific detail values.
+[x] Display guard power on shield slots; retain stack quantities on food slots.
+[x] Development Editor build passed (27.29s); WorldUpAnimation automation passed.
+[x] Both widgets compiled; Play-checked shield and food displays; sample data disabled.
+[x] Implement consuming food using HealthRestored (see item actions below).
+[ ] Implement shield blocking gameplay using GuardPower.
+
+======================================================================
+VISIBLE EMPTY SLOTS - 2026-11-10
+======================================================================
+[x] Set native and saved character category capacities to 10 each (30 total).
+[x] Build category pages from available capacity, filling unused frames as empty.
+[x] Keep actual Entries compact: placeholders exist only in the UI.
+[x] Empty slots have no icon, count, hover preview, or selection.
+[x] Preserve stacking, sorting, and existing pickup capacity enforcement.
+[x] Development Editor build succeeded (25.74s).
+[x] Play-checked ten empty frames in all categories, empty-slot clicks, and
+    seven occupied food slots plus three empty slots with working item details.
+    Temporary samples disabled and character Blueprint saved after checking.
+
+[x] User requested 20 slots per category instead: updated and saved the player
+    Blueprint capacities to 20/20/20 (60 total, one full 5-by-4 page each).
+    Configuration-only change; native fallback stays 10. No C++ rebuild needed.
+
+======================================================================
+ITEM ACTION MENU - 2026-11-10
+======================================================================
+[x] Native C++/Slate modal: Eat (food) or disabled Equip (equipment), Drop,
+    Delete, Cancel. Mouse and Up/Down + Enter/A; B/Esc dismiss; Tab closes inventory.
+[x] Eat consumes one item, heals in heart units, clamps at max health,
+    and rejects full health without consuming food.
+[x] Drop creates one collectible native ItemPickup on nearby clear ground;
+    blocked/failed placement keeps the item. Dropped items stay still, no physics.
+[x] Delete confirms before removing one item from the selected stack.
+[x] Entry IDs distinguish identical stacks/weapons across sorting and removal.
+[x] Inventory-change notifications refresh slots and close stale menus.
+[x] Food healing: Apple 1, Pumpkin 2.5, Hydromelon 1.5, Bananas 3, Pepper 0.5.
+[x] Development Editor build passed (27.74s after struct initialization fix).
+[x] UIInventorySystem.Inventory.ItemActions automation passed: full-health
+    rejection, clamped healing, precise consumption/removal, stale IDs,
+    rejected weapon consumption, failed placement retention, drop/recollect.
+[x] Play-checked menu rendering, disabled Equip, keyboard confirmation,
+    Delete quantity 23 -> 22, weapon Drop, full-health message, and eating
+    after damage with immediate heart/quantity updates.
+[x] Restored bAddSampleItems=false and collapsed health test buttons; assets saved.
+[x] Equipment/sockets and character attachment implemented; see November 20 below.
+[ ] Future quantity chooser for dropping/deleting an entire stack.
+
+======================================================================
+EQUIPMENT POWER AND STACKS - 2026-11-13
+======================================================================
+[x] Every occupied item slot displays quantity; power stays in the detail panel.
+[x] Equipment rolls base attack/guard power +/- editable PowerVariance (default 3).
+[x] Store power per entry; stack only matching row and power, respecting limits.
+[x] Equipment rows allow stacks of 999; removed Steel Lizal Shield ownership cap.
+[x] Preserve power through failed pickup attempts and drop/recollect.
+[x] Sort each equipment type's variants by descending power.
+[x] Development Editor build and both inventory automation tests passed.
+[x] Play-checked shield/sword counts and distinct rolled detail values.
+[x] Removed temporary samples, saved assets, left Unreal Editor open.
+
+======================================================================
+EQUIPMENT AND CHARACTER PREVIEW - 2026-11-20
+======================================================================
+[x] Equip weapon/shield entries without consuming quantity; clear removed entries.
+[x] Attach gameplay meshes to authored WeaponSocket and ShieldSocket.
+[x] Animated, lit inventory character preview with synchronized equipment.
+[x] Left-drag rotation and editable camera/light settings.
+[x] Square render target/image and wider framing for held equipment.
+[x] Latest build succeeded; user confirmed corrected preview after rebuild.
+[x] EquipmentStacks, ItemActions, and WorldUpAnimation regression tests passed.
+[ ] Weapon damage, shield blocking, and equipment-specific animation poses.
