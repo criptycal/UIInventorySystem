@@ -224,6 +224,4 @@ void UInventoryWidget::RefreshPreviewEquipment()
 
 	CharacterPreviewActor->SetEquipmentMeshes(WeaponMesh, ShieldMesh);
 
-
-
 }
