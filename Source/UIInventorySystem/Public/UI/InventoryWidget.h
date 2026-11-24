@@ -175,6 +175,7 @@ private:
 	TObjectPtr<UScrollBox> ItemDescriptionScroll;
 
 	void HandleItemClicked(UItemSlotWidget* SlotWidget);
+	void HandleItemContextMenuRequested(UItemSlotWidget* SlotWidget);
 	void HandleItemHoverChanged(UItemSlotWidget* SlotWidget, bool bHovered);
 	void ClearItemSelection();
 	void RefreshItemInfo();

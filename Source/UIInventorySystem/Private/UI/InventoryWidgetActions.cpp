@@ -22,6 +22,7 @@ void UInventoryWidget::OpenActionMenu()
 	ActionMenu = CreateWidget<UItemActionMenuWidget>(GetOwningPlayer(), UItemActionMenuWidget::StaticClass());
 	if (!ActionMenu) return;
 	ActionMenu->Configure(Definition->DisplayName, Definition->Category == EItemCategory::Food);
+	ActionMenu->SetAnchorSlot(SelectedSlot.Get());
 	ActionMenu->OnActionRequested.BindUObject(this, &UInventoryWidget::HandleItemAction);
 	ActionMenu->OnDismissed.BindUObject(this, &UInventoryWidget::HandleMenuDismissed);
 	ActionMenu->AddToPlayerScreen(20);

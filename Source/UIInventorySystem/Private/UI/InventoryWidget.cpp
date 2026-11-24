@@ -449,6 +449,7 @@ void UInventoryWidget::RebuildItemGrid()
 				SlotWidget->SetItemDisplay(Entry.ItemRowName, *Definition, Entry.Quantity);
 				VisibleEntryIds.Add(SlotWidget, Entry.EntryId);
 				SlotWidget->OnItemClicked.BindUObject(this, &UInventoryWidget::HandleItemClicked);
+				SlotWidget->OnContextMenuRequested.BindUObject(this, &UInventoryWidget::HandleItemContextMenuRequested);
 				SlotWidget->OnHoverChanged.BindUObject(this, &UInventoryWidget::HandleItemHoverChanged);
 			}
 		}
@@ -470,6 +471,7 @@ void UInventoryWidget::ClearItemSelection()
 			{
 				SlotWidget->OnItemClicked.Unbind();
 				SlotWidget->OnHoverChanged.Unbind();
+				SlotWidget->OnContextMenuRequested.Unbind();
 				SlotWidget->SetSelected(false);
 			}
 		}
@@ -490,13 +492,36 @@ void UInventoryWidget::HandleItemClicked(UItemSlotWidget* SlotWidget)
 	SlotWidget->SetSelected(true);
 	SetKeyboardFocus(); // Keep Tab/B available after interacting with inventory content.
 	RefreshItemInfo();
+}
+
+void UInventoryWidget::HandleItemContextMenuRequested(UItemSlotWidget* SlotWidget)
+{
+	if (ActionMenu || !IsValid(SlotWidget) || !ItemGrid)
+	{
+		return;
+	}
+
+	if (ItemGrid->GetChildIndex(SlotWidget) == INDEX_NONE ||
+		SlotWidget->GetQuantity() <= 0)
+	{
+		return;
+	}
+
+	HandleItemClicked(SlotWidget);
 	OpenActionMenu();
 }
 
-void UInventoryWidget::HandleItemHoverChanged(UItemSlotWidget* SlotWidget, bool bHovered)
+void UInventoryWidget::HandleItemHoverChanged(
+	UItemSlotWidget* SlotWidget, bool bHovered)
 {
 	if (ActionMenu) return;
-	if (!IsValid(SlotWidget) || !ItemGrid || ItemGrid->GetChildIndex(SlotWidget) == INDEX_NONE) return;
+
+	if (!IsValid(SlotWidget) || !ItemGrid ||
+		ItemGrid->GetChildIndex(SlotWidget) == INDEX_NONE)
+	{
+		return;
+	}
+
 	if (bHovered)
 	{
 		HoveredSlot = SlotWidget;
@@ -505,6 +530,7 @@ void UInventoryWidget::HandleItemHoverChanged(UItemSlotWidget* SlotWidget, bool 
 	{
 		HoveredSlot.Reset();
 	}
+
 	RefreshItemInfo();
 }
 
