@@ -30,6 +30,7 @@ public:
 	void SetItemDisplay(FName InRowName, const FItemRow& Definition, int32 InQuantity);
 	void SetEmptyDisplay();
 	void SetSelected(bool bInSelected);
+	void SetEquipped(bool bInEquipped);
 	FName GetItemRowName() const { return DisplayRowName; }
 	int32 GetQuantity() const { return DisplayQuantity; }
 
@@ -66,6 +67,9 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Inventory|Appearance")
 	FLinearColor SelectionColor = FLinearColor::White;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Inventory|Appearance")
+	FLinearColor EquippedBackgroundColor = FLinearColor(0.02f, 0.35f, 0.85f, 1.0f);
+
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2D> DisplayIcon = nullptr;
 
@@ -73,6 +77,7 @@ private:
 	FName DisplayRowName = NAME_None;
 	bool bItemHovered = false;
 	bool bSelected = false;
+	bool bEquipped = false;
 	FSlateBrush DefaultSlotBrush;
 
 	void RefreshDisplay();

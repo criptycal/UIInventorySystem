@@ -18,6 +18,7 @@
 #include "Engine/Texture2D.h"
 #include "UI/ItemSlotWidget.h"
 #include "Inventory/Components/InventoryComponent.h"
+#include "Inventory/Components/EquipmentComponent.h"
 #include "Inventory/Data/ItemRow.h"
 #include "UIInventorySystem.h"
 
@@ -121,8 +122,16 @@ void UInventoryWidget::NativeConstruct()
 	bCloseOnTabRelease = false;
 	bCloseOnBRelease = false;
 
+	if (ObservedEquipment.IsValid()) ObservedEquipment->OnEquipmentChanged.RemoveAll(this);
+	ObservedEquipment.Reset();
+
 	if (APawn* Pawn = GetOwningPlayerPawn())
 	{
+		ObservedEquipment = Pawn->FindComponentByClass<UEquipmentComponent>();
+		if (ObservedEquipment.IsValid())
+		{
+			ObservedEquipment->OnEquipmentChanged.AddUObject(this, &UInventoryWidget::HandleEquipmentChanged);
+		}
 		ObservedInventory = Pawn->FindComponentByClass<UInventoryComponent>();
 		if (ObservedInventory.IsValid())
 		{
@@ -152,6 +161,8 @@ void UInventoryWidget::NativeConstruct()
 
 void UInventoryWidget::NativeDestruct()
 {
+	if (ObservedEquipment.IsValid()) ObservedEquipment->OnEquipmentChanged.RemoveAll(this);
+	ObservedEquipment.Reset();
 	if (ObservedInventory.IsValid()) ObservedInventory->OnInventoryChanged.RemoveAll(this);
 	ObservedInventory.Reset();
 	ClearItemSelection();
@@ -455,6 +466,31 @@ void UInventoryWidget::RebuildItemGrid()
 		}
 
 		ItemGrid->AddChildToWrapBox(SlotWidget);
+	}
+	RefreshEquippedSlots();
+}
+
+void UInventoryWidget::HandleEquipmentChanged()
+{
+	RefreshEquippedSlots();
+	RefreshPreviewEquipment();
+}
+
+void UInventoryWidget::RefreshEquippedSlots()
+{
+	const FGuid WeaponId = ObservedEquipment.IsValid()
+		? ObservedEquipment->GetEquippedWeaponId() : FGuid();
+	const FGuid ShieldId = ObservedEquipment.IsValid()
+		? ObservedEquipment->GetEquippedShieldId() : FGuid();
+
+	// Match the actual inventory stack, not every item with the same definition.
+	for (const auto& SlotEntry : VisibleEntryIds)
+	{
+		if (UItemSlotWidget* SlotWidget = SlotEntry.Key.Get())
+		{
+			const FGuid& EntryId = SlotEntry.Value;
+			SlotWidget->SetEquipped(EntryId.IsValid() && (EntryId == WeaponId || EntryId == ShieldId));
+		}
 	}
 }
 

@@ -64,25 +64,12 @@ void UInventoryWidget::CreateCharacterPreview()
 		TEXT("PreviewTexture"),
 		CharacterPreviewActor->GetRenderTarget());
 
-	ObservedEquipment = PlayerCharacter->FindComponentByClass<UEquipmentComponent>();
-
-	if (ObservedEquipment.IsValid())
-	{
-		ObservedEquipment->OnEquipmentChanged.AddUObject(this, &UInventoryWidget::RefreshPreviewEquipment);
-	}
 	RefreshPreviewEquipment();
 	CharacterPreviewImage->SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 
 void UInventoryWidget::ReleaseCharacterPreview()
 {
-	if (ObservedEquipment.IsValid())
-	{
-		ObservedEquipment->OnEquipmentChanged.RemoveAll(this);
-	}
-
-	ObservedEquipment.Reset();
-
 	bDraggingCharacterPreview = false;
 	if (CharacterPreviewImage)
 	{

@@ -10,6 +10,7 @@
 #include "Input/Events.h"
 #include "InputCoreTypes.h"
 #include "Rendering/DrawElementTypes.h"
+#include "Rendering/SlateResourceHandle.h"
 
 void UItemSlotWidget::NativeOnInitialized()
 {
@@ -47,6 +48,7 @@ void UItemSlotWidget::SetEmptyDisplay()
     DisplayQuantity = 0;
     bItemHovered = false;
     bSelected = false;
+    bEquipped = false;
     OnItemClicked.Unbind();
     OnContextMenuRequested.Unbind();
     OnHoverChanged.Unbind();
@@ -101,6 +103,14 @@ void UItemSlotWidget::SetSelected(bool bInSelected)
     RefreshVisuals();
 }
 
+void UItemSlotWidget::SetEquipped(bool bInEquipped)
+{
+    bInEquipped = bInEquipped && DisplayQuantity > 0;
+    if (bEquipped == bInEquipped) return;
+    bEquipped = bInEquipped;
+    RefreshVisuals();
+}
+
 void UItemSlotWidget::NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
     Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
@@ -144,6 +154,10 @@ void UItemSlotWidget::RefreshVisuals()
     if (SlotBackground)
     {
         FSlateBrush Brush = DefaultSlotBrush;
+        if (bEquipped)
+        {
+            Brush.TintColor = EquippedBackgroundColor;
+        }
         if (bItemHovered || bSelected)
         {
             Brush.OutlineSettings.Color = bSelected ? SelectionColor : HoverOutlineColor;
@@ -162,22 +176,45 @@ int32 UItemSlotWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Allo
         OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
     if (!bSelected) return TopLayer;
 
-    // Four corner brackets scale with the widget, without a texture or a per-frame animation.
-    const FVector2D Size = AllottedGeometry.GetLocalSize();
-    const double Inset = 3.0;
-    const double Length = FMath::Min(14.0, FMath::Min(Size.X, Size.Y) * 0.2);
-    const FLinearColor Tint = SelectionColor * InWidgetStyle.GetColorAndOpacityTint();
+    // Four filled arrowheads point outward toward the selected slot's corners.
+    const FVector2f Size(AllottedGeometry.GetLocalSize());
+    const float Inset = 3.0f;
+    if (Size.X <= Inset * 2.f || Size.Y <= Inset * 2.f) return TopLayer;
+
+    const float Length = FMath::Min(14.0f, (FMath::Min(Size.X, Size.Y) - Inset * 2.f) * 0.2f);
+    const FColor Tint = (SelectionColor * InWidgetStyle.GetColorAndOpacityTint()).ToFColor(true);
+    const FSlateRenderTransform& PaintTransform = AllottedGeometry.GetAccumulatedRenderTransform();
+    TArray<FSlateVertex> Vertices;
+    TArray<SlateIndex> Indices;
+    Vertices.Reserve(12);
+    Indices.Reserve(12);
+
     for (int32 Corner = 0; Corner < 4; ++Corner)
     {
         const bool bRight = (Corner & 1) != 0;
         const bool bBottom = (Corner & 2) != 0;
-        const FVector2D Point(bRight ? Size.X - Inset : Inset, bBottom ? Size.Y - Inset : Inset);
-        const TArray<FVector2D> Points = {
-            Point + FVector2D(bRight ? -Length : Length, 0.0), Point,
-            Point + FVector2D(0.0, bBottom ? -Length : Length)
+        const FVector2f Point(bRight ? Size.X - Inset : Inset, bBottom ? Size.Y - Inset : Inset);
+        const float DirectionX = bRight ? -1.f : 1.f;
+        const float DirectionY = bBottom ? -1.f : 1.f;
+        const FVector2f Points[] = {
+            Point,
+            Point + FVector2f(DirectionX * Length, 0.f),
+            Point + FVector2f(0.f, DirectionY * Length)
         };
-        FSlateDrawElement::MakeLines(OutDrawElements, TopLayer + 1, AllottedGeometry.ToPaintGeometry(),
-            Points, ESlateDrawEffect::None, Tint, true, 3.0f);
+        const SlateIndex FirstVertex = static_cast<SlateIndex>(Vertices.Num());
+        for (const FVector2f& Position : Points)
+        {
+            Vertices.Add(FSlateVertex::Make<ESlateVertexRounding::Disabled>(
+                PaintTransform, Position, FVector2f::ZeroVector, Tint));
+        }
+        // Mirrored corners retain the same triangle winding.
+        Indices.Add(FirstVertex);
+        Indices.Add(FirstVertex + (bRight != bBottom ? 2 : 1));
+        Indices.Add(FirstVertex + (bRight != bBottom ? 1 : 2));
     }
+
+    // An empty resource handle draws solid vertex colors without an image asset.
+    FSlateDrawElement::MakeCustomVerts(OutDrawElements, TopLayer + 1,
+        FSlateResourceHandle(), Vertices, Indices, nullptr, 0, 0);
     return TopLayer + 1;
 }

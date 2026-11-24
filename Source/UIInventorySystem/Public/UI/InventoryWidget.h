@@ -225,6 +225,8 @@ private:
 	void ReleaseCharacterPreview();
 
 	TWeakObjectPtr<UEquipmentComponent> ObservedEquipment;
+	void HandleEquipmentChanged();
+	void RefreshEquippedSlots();
 
 	void RefreshPreviewEquipment();
 	UStaticMesh* FindPreviewEquipmentMesh(const FGuid& EntryId) const;
