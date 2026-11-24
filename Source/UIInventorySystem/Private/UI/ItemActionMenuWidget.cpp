@@ -1,9 +1,11 @@
 #include "UI/ItemActionMenuWidget.h"
+#include "UI/ItemSlotWidget.h"
 
 #include "InputCoreTypes.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SConstraintCanvas.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Input/SButton.h"
@@ -16,6 +18,11 @@ void UItemActionMenuWidget::Configure(const FText& InItemName, bool bInFood)
 	bFood = bInFood;
 	ActiveOption = 0;
 	Status = NSLOCTEXT("Inventory", "ActionHint", "Choose an action for one item.");
+}
+
+void UItemActionMenuWidget::SetAnchorSlot(UItemSlotWidget* InSlot)
+{
+	AnchorSlot = InSlot;
 }
 
 namespace
@@ -68,7 +75,7 @@ namespace
 
 			const FVector2D Size = Geometry.GetLocalSize();
 			const double Inset = 2.0;
-			const double Length = 10.0;
+			const double Length = 8.0;
 			const FLinearColor Tint =
 				FLinearColor(1.f, 1.f, 0.9f) * WidgetStyle.GetColorAndOpacityTint();
 
@@ -123,6 +130,43 @@ void UItemActionMenuWidget::NativeConstruct()
 	SetKeyboardFocus();
 }
 
+void UItemActionMenuWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	const TSharedPtr<SBox> Panel = MenuPanel.Pin();
+	if (!Panel.IsValid()) return;
+
+	const FVector2D AvailableSize = MyGeometry.GetLocalSize();
+	const FVector2D PanelSize(Panel->GetDesiredSize());
+	if (AvailableSize.X <= 0.0 || AvailableSize.Y <= 0.0) return;
+
+	const double Gap = 12.0;
+	const double Margin = 8.0;
+	FVector2D Position = (AvailableSize - PanelSize) * 0.5;
+
+	if (const UItemSlotWidget* AnchorWidget = AnchorSlot.Get())
+	{
+		const FGeometry& SlotGeometry = AnchorWidget->GetCachedGeometry();
+		// Convert both corners into this full-screen menu's local UI units.
+		const FVector2D TopLeft = MyGeometry.AbsoluteToLocal(
+			SlotGeometry.LocalToAbsolute(FVector2D::ZeroVector));
+		const FVector2D BottomRight = MyGeometry.AbsoluteToLocal(
+			SlotGeometry.LocalToAbsolute(SlotGeometry.GetLocalSize()));
+
+		Position = FVector2D(BottomRight.X + Gap, TopLeft.Y);
+		if (Position.X + PanelSize.X > AvailableSize.X - Margin)
+		{
+			Position.X = TopLeft.X - PanelSize.X - Gap;
+		}
+	}
+
+	const double MaxX = FMath::Max(Margin, AvailableSize.X - PanelSize.X - Margin);
+	const double MaxY = FMath::Max(Margin, AvailableSize.Y - PanelSize.Y - Margin);
+	MenuPosition.X = FMath::Clamp(Position.X, Margin, MaxX);
+	MenuPosition.Y = FMath::Clamp(Position.Y, Margin, MaxY);
+}
+
 TSharedRef<SWidget> UItemActionMenuWidget::RebuildWidget()
 {
 	SetIsFocusable(true);
@@ -135,34 +179,47 @@ TSharedRef<SWidget> UItemActionMenuWidget::RebuildWidget()
 		[SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
 		.BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.38f))]
 	]
-	+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
+	+ SOverlay::Slot()
 	[
-		SNew(SBox).WidthOverride(380.f)
+		SNew(SConstraintCanvas)
+		.Visibility(EVisibility::SelfHitTestInvisible)
+		+ SConstraintCanvas::Slot()
+			.Anchors(FAnchors(0.f, 0.f))
+			.Alignment(FVector2D::ZeroVector)
+			.AutoSize(true)
+			.Offset_Lambda([this]
+			{
+				return FMargin(static_cast<float>(MenuPosition.X),
+					static_cast<float>(MenuPosition.Y), 0.f, 0.f);
+			})
 		[
-			SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(FLinearColor(0.75f, 0.78f, 0.8f)).Padding(1.5f)
+			SAssignNew(MenuPanel, SBox).WidthOverride(280.f)
 			[
 				SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-				.BorderBackgroundColor(FLinearColor(0.025f, 0.035f, 0.045f, 1.f)).Padding(20.f)
+				.BorderBackgroundColor(FLinearColor(0.75f, 0.78f, 0.8f)).Padding(1.5f)
 				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 14)
-					[SNew(STextBlock).Text(ItemName).AutoWrapText(true)
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 22)).ColorAndOpacity(FLinearColor::White)]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 12)
-					[SNew(SBox).HeightOverride(1.f)[SNew(SBorder)
-					.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-					.BorderBackgroundColor(FLinearColor(1, 1, 1, 0.5f))]]
-					+ SVerticalBox::Slot().AutoHeight()[MakeOption(0, bFood
-						? NSLOCTEXT("Inventory", "EatOne", "Eat")
-						: NSLOCTEXT("Inventory", "EquipItem", "Equip"))]
-					+ SVerticalBox::Slot().AutoHeight()[MakeOption(1, NSLOCTEXT("Inventory", "DropOne", "Drop"))]
-					+ SVerticalBox::Slot().AutoHeight()[MakeOption(2, NSLOCTEXT("Inventory", "DeleteOne", "Delete"))]
-					+ SVerticalBox::Slot().AutoHeight()[MakeOption(3, NSLOCTEXT("Inventory", "CancelAction", "Cancel"))]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0, 14, 0, 0)
-					[SNew(STextBlock).Text_Lambda([this] { return Status; }).AutoWrapText(true)
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 14))
-					.ColorAndOpacity(FLinearColor(0.8f, 0.85f, 0.9f))]
+					SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(FLinearColor(0.025f, 0.035f, 0.045f, 1.f)).Padding(12.f)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+						[SNew(STextBlock).Text(ItemName).AutoWrapText(true)
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 16)).ColorAndOpacity(FLinearColor::White)]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 8)
+						[SNew(SBox).HeightOverride(1.f)[SNew(SBorder)
+						.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+						.BorderBackgroundColor(FLinearColor(1, 1, 1, 0.5f))]]
+						+ SVerticalBox::Slot().AutoHeight()[MakeOption(0, bFood
+							? NSLOCTEXT("Inventory", "EatOne", "Eat")
+							: NSLOCTEXT("Inventory", "EquipItem", "Equip"))]
+						+ SVerticalBox::Slot().AutoHeight()[MakeOption(1, NSLOCTEXT("Inventory", "DropOne", "Drop"))]
+						+ SVerticalBox::Slot().AutoHeight()[MakeOption(2, NSLOCTEXT("Inventory", "DeleteOne", "Delete"))]
+						+ SVerticalBox::Slot().AutoHeight()[MakeOption(3, NSLOCTEXT("Inventory", "CancelAction", "Cancel"))]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 0)
+						[SNew(STextBlock).Text_Lambda([this] { return Status; }).AutoWrapText(true)
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+						.ColorAndOpacity(FLinearColor(0.8f, 0.85f, 0.9f))]
+					]
 				]
 			]
 		]
@@ -173,8 +230,8 @@ TSharedRef<SWidget> UItemActionMenuWidget::MakeOption(
 	int32 Index, const FText& Label)
 {
 	return SNew(SBox)
-		.HeightOverride(64.f)
-		.Padding(FMargin(0.f, 4.f))
+		.HeightOverride(44.f)
+		.Padding(FMargin(0.f, 2.f))
 		[
 			SNew(SButton)
 				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
@@ -201,7 +258,7 @@ TSharedRef<SWidget> UItemActionMenuWidget::MakeOption(
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
 								.BorderBackgroundColor(
 									FLinearColor(0.008f, 0.008f, 0.008f, 1.f))
-								.Padding(FMargin(12.f, 5.f))
+								.Padding(FMargin(8.f, 3.f))
 								.HAlign(HAlign_Center)
 								.VAlign(VAlign_Center)
 								[
@@ -211,11 +268,11 @@ TSharedRef<SWidget> UItemActionMenuWidget::MakeOption(
 												return Index == 2 && bConfirmDelete
 													? NSLOCTEXT(
 														"Inventory",
-														"ConfirmDeleteOne",
-														"Confirm delete (1 item)")
+														"ConfirmDeleteShort",
+														"Confirm delete")
 													: Label;
 											})
-										.Font(FCoreStyle::GetDefaultFontStyle("BoldItalic", 22))
+										.Font(FCoreStyle::GetDefaultFontStyle("BoldItalic", 17))
 										.ColorAndOpacity(FLinearColor::White)
 								]
 						]

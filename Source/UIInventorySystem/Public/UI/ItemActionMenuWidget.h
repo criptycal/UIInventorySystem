@@ -4,6 +4,9 @@
 #include "Blueprint/UserWidget.h"
 #include "ItemActionMenuWidget.generated.h"
 
+class UItemSlotWidget;
+class SBox;
+
 enum class EInventoryItemAction : uint8
 {
 	Eat,
@@ -22,6 +25,7 @@ class UIINVENTORYSYSTEM_API UItemActionMenuWidget : public UUserWidget
 	GENERATED_BODY()
 public:
 	void Configure(const FText& InItemName, bool bInFood);
+	void SetAnchorSlot(UItemSlotWidget* InSlot);
 	void ShowFailure(const FText& Message);
 	FItemActionRequested OnActionRequested;
 	FItemMenuDismissed OnDismissed;
@@ -29,9 +33,13 @@ public:
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 
 private:
+	TWeakObjectPtr<UItemSlotWidget> AnchorSlot;
+	TWeakPtr<SBox> MenuPanel;
+	FVector2D MenuPosition = FVector2D::ZeroVector;
 	FText ItemName;
 	FText Status;
 	bool bFood = false;

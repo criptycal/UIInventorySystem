@@ -16,6 +16,7 @@ class UItemSlotWidget;
 struct FItemRow;
 
 DECLARE_DELEGATE_OneParam(FItemSlotClicked, UItemSlotWidget*);
+DECLARE_DELEGATE_OneParam(FItemSlotContextMenuRequested, UItemSlotWidget*);
 DECLARE_DELEGATE_TwoParams(FItemSlotHoverChanged, UItemSlotWidget*, bool);
 /**
  *
@@ -33,6 +34,7 @@ public:
 	int32 GetQuantity() const { return DisplayQuantity; }
 
 	FItemSlotClicked OnItemClicked;
+	FItemSlotContextMenuRequested OnContextMenuRequested;
 	FItemSlotHoverChanged OnHoverChanged;
 
 protected:

@@ -48,6 +48,7 @@ void UItemSlotWidget::SetEmptyDisplay()
     bItemHovered = false;
     bSelected = false;
     OnItemClicked.Unbind();
+    OnContextMenuRequested.Unbind();
     OnHoverChanged.Unbind();
     RefreshDisplay();
     RefreshVisuals();
@@ -119,12 +120,23 @@ void UItemSlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 
 FReply UItemSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && DisplayQuantity > 0)
-    {
-        OnItemClicked.ExecuteIfBound(this);
-        return FReply::Handled();
-    }
-    return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+	if (DisplayQuantity <= 0) return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+
+	const FKey Button = InMouseEvent.GetEffectingButton();
+
+	if (Button == EKeys::LeftMouseButton)
+	{
+		OnItemClicked.ExecuteIfBound(this);
+		return FReply::Handled();
+	}
+
+	if (Button == EKeys::RightMouseButton)
+	{
+		OnContextMenuRequested.ExecuteIfBound(this);
+		return FReply::Handled();
+	}
+
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 }
 
 void UItemSlotWidget::RefreshVisuals()
