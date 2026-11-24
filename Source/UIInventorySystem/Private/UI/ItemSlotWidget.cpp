@@ -12,6 +12,41 @@
 #include "Rendering/DrawElementTypes.h"
 #include "Rendering/SlateResourceHandle.h"
 
+namespace
+{
+    UTexture2D* GetEquippedSlotGradient()
+    {
+        // The border brushes keep this shared transient texture alive while in use.
+        static TWeakObjectPtr<UTexture2D> CachedGradient;
+        if (CachedGradient.IsValid()) return CachedGradient.Get();
+
+        constexpr int32 Resolution = 64;
+        UTexture2D* Texture = UTexture2D::CreateTransient(Resolution, Resolution, PF_B8G8R8A8);
+        if (!Texture) return nullptr;
+
+        Texture->SRGB = true;
+        Texture->Filter = TF_Bilinear;
+        Texture->AddressX = TA_Clamp;
+        Texture->AddressY = TA_Clamp;
+        FColor* Pixels = static_cast<FColor*>(Texture->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+        for (int32 Y = 0; Y < Resolution; ++Y)
+        {
+            for (int32 X = 0; X < Resolution; ++X)
+            {
+                const float U = 2.f * X / (Resolution - 1) - 1.f;
+                const float V = 2.f * Y / (Resolution - 1) - 1.f;
+                const float Falloff = FMath::Clamp(1.f - (U * U + V * V) * 0.65f, 0.f, 1.f);
+                const float Brightness = FMath::Lerp(0.12f, 1.f, Falloff * Falloff);
+                Pixels[Y * Resolution + X] = FLinearColor(Brightness, Brightness, Brightness, 1.f).ToFColor(true);
+            }
+        }
+        Texture->GetPlatformData()->Mips[0].BulkData.Unlock();
+        Texture->UpdateResource();
+        CachedGradient = Texture;
+        return Texture;
+    }
+}
+
 void UItemSlotWidget::NativeOnInitialized()
 {
     Super::NativeOnInitialized();
@@ -157,11 +192,17 @@ void UItemSlotWidget::RefreshVisuals()
         if (bEquipped)
         {
             Brush.TintColor = EquippedBackgroundColor;
+            Brush.SetResourceObject(GetEquippedSlotGradient());
         }
-        if (bItemHovered || bSelected)
+        if (bSelected)
         {
-            Brush.OutlineSettings.Color = bSelected ? SelectionColor : HoverOutlineColor;
-            Brush.OutlineSettings.Width = 2.0f;
+            // NativePaint supplies one fine glowing frame instead of doubling the border.
+            Brush.OutlineSettings.Width = 0.f;
+        }
+        else if (bItemHovered)
+        {
+            Brush.OutlineSettings.Color = HoverOutlineColor;
+            Brush.OutlineSettings.Width = 1.0f;
         }
         SlotBackground->SetBrush(Brush);
     }
@@ -178,11 +219,30 @@ int32 UItemSlotWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Allo
 
     // Four filled arrowheads point outward toward the selected slot's corners.
     const FVector2f Size(AllottedGeometry.GetLocalSize());
-    const float Inset = 3.0f;
+    const float Inset = 4.0f;
     if (Size.X <= Inset * 2.f || Size.Y <= Inset * 2.f) return TopLayer;
 
-    const float Length = FMath::Min(14.0f, (FMath::Min(Size.X, Size.Y) - Inset * 2.f) * 0.2f);
-    const FColor Tint = (SelectionColor * InWidgetStyle.GetColorAndOpacityTint()).ToFColor(true);
+    const float Length = FMath::Min(8.0f, (FMath::Min(Size.X, Size.Y) - Inset * 2.f) * 0.08f);
+    const FLinearColor SelectionTint = SelectionColor * InWidgetStyle.GetColorAndOpacityTint();
+    const FColor Tint = SelectionTint.ToFColor(true);
+
+    const float FrameInset = Inset + 1.5f;
+    if (Size.X <= FrameInset * 2.f || Size.Y <= FrameInset * 2.f) return TopLayer;
+    const TArray<FVector2D> FramePoints = {
+        FVector2D(FrameInset, FrameInset), FVector2D(Size.X - FrameInset, FrameInset),
+        FVector2D(Size.X - FrameInset, Size.Y - FrameInset), FVector2D(FrameInset, Size.Y - FrameInset),
+        FVector2D(FrameInset, FrameInset)
+    };
+    // Broad, faint strokes soften the glow around the 1.75-unit bright outline.
+    const float StrokeWidths[] = { 8.f, 5.f, 3.f, 1.75f };
+    const float StrokeOpacities[] = { 0.04f, 0.10f, 0.22f, 0.95f };
+    for (int32 Stroke = 0; Stroke < UE_ARRAY_COUNT(StrokeWidths); ++Stroke)
+    {
+        FLinearColor StrokeColor = SelectionTint;
+        StrokeColor.A *= StrokeOpacities[Stroke];
+        FSlateDrawElement::MakeLines(OutDrawElements, TopLayer + 1, AllottedGeometry.ToPaintGeometry(),
+            FramePoints, ESlateDrawEffect::None, StrokeColor, true, StrokeWidths[Stroke]);
+    }
     const FSlateRenderTransform& PaintTransform = AllottedGeometry.GetAccumulatedRenderTransform();
     TArray<FSlateVertex> Vertices;
     TArray<SlateIndex> Indices;
@@ -214,7 +274,7 @@ int32 UItemSlotWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Allo
     }
 
     // An empty resource handle draws solid vertex colors without an image asset.
-    FSlateDrawElement::MakeCustomVerts(OutDrawElements, TopLayer + 1,
+    FSlateDrawElement::MakeCustomVerts(OutDrawElements, TopLayer + 2,
         FSlateResourceHandle(), Vertices, Indices, nullptr, 0, 0);
-    return TopLayer + 1;
+    return TopLayer + 2;
 }
